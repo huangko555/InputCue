@@ -77,6 +77,8 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 - AutomationId；
 - 完整程序路径或用户目录。
 
+开发时可显式运行 `--capture-trace <文件>` 进行 20 秒无界面采集。该入口直接输出规范化 Trace：真实时间、进程 ID、坐标和耗时会被替换，只保留回放分类所需的语义。浏览器采集必须由人工确认真实窗口获得前台焦点；仅改变 DOM 的自动化操作不能作为 Edge/Chrome 兼容通过证据。
+
 ## 当前已知边界
 
 - UIA Caret 优先使用由 CsWin32 从 Windows SDK 元数据生成的原生 COM `IUIAutomationTextPattern2.GetCaretRange`，不支持时再降级到托管 `TextPattern` 的折叠选区矩形。

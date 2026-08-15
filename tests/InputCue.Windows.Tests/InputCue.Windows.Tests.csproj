@@ -25,4 +25,8 @@
     <ProjectReference Include="..\..\src\InputCue.Core\InputCue.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\traces\*.json" Link="traces\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
