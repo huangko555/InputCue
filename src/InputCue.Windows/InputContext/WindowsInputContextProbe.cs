@@ -37,6 +37,7 @@ internal sealed class WindowsInputContextProbe : IDisposable
             var current = focusedElement.Current;
             var focusedProcessId = current.ProcessId;
             var focusWindow = threadInfo.FocusWindow;
+            var automationIdentity = AutomationIdentity(focusedElement);
 
             if (focusedProcessId <= 0 || focusedProcessId != foregroundProcessId)
             {
@@ -91,10 +92,25 @@ internal sealed class WindowsInputContextProbe : IDisposable
                 win32Caret,
                 msaaCaret);
 
+            if (!IsStillCurrent(
+                    foregroundWindow,
+                    foregroundProcessId,
+                    focusWindow,
+                    focusedProcessId,
+                    automationIdentity))
+            {
+                return Failure(
+                    foregroundWindow,
+                    focusWindow,
+                    ProbeIssue.ConflictingEvidence,
+                    startedAt,
+                    focusedProcessId);
+            }
+
             return new RawInputContextObservation(
                 foregroundWindow,
                 focusWindow,
-                AutomationIdentity(focusedElement),
+                automationIdentity,
                 textObservation.SelectionIdentity,
                 target,
                 evidence,
@@ -198,6 +214,37 @@ internal sealed class WindowsInputContextProbe : IDisposable
         }
 
         return hash.ToHashCode();
+    }
+
+    private static bool IsStillCurrent(
+        nint foregroundWindow,
+        uint foregroundProcessId,
+        nint focusWindow,
+        int focusedProcessId,
+        int automationIdentity)
+    {
+        if (NativeMethods.GetForegroundWindow() != foregroundWindow)
+        {
+            return false;
+        }
+
+        var finalThread = NativeMethods.GetWindowThreadProcessId(foregroundWindow, out var finalProcessId);
+        if (finalThread == 0 || finalProcessId != foregroundProcessId)
+        {
+            return false;
+        }
+
+        var finalThreadInfo = GuiThreadInfo.Create();
+        if (!NativeMethods.GetGUIThreadInfo(finalThread, ref finalThreadInfo) ||
+            focusWindow != finalThreadInfo.FocusWindow)
+        {
+            return false;
+        }
+
+        var finalFocusedElement = AutomationElement.FocusedElement;
+        return finalFocusedElement is not null &&
+            finalFocusedElement.Current.ProcessId == focusedProcessId &&
+            AutomationIdentity(finalFocusedElement) == automationIdentity;
     }
 
     private static ScreenRect? FirstRectangle(System.Windows.Rect[] rectangles)

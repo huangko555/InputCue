@@ -6,7 +6,10 @@ namespace InputCue.Windows.InputContext;
 
 public sealed class InputContextEngine
 {
-    private static readonly TimeSpan DefaultSampleInterval = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan CircuitCooldown = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan EventDebounceInterval = TimeSpan.FromMilliseconds(40);
+    private static readonly TimeSpan QueryTimeout = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan DefaultSampleInterval = TimeSpan.FromSeconds(1);
     private readonly bool _ignoreCurrentProcess;
     private readonly TimeSpan _sampleInterval;
 
@@ -65,7 +68,11 @@ public sealed class InputContextEngine
         ChannelWriter<InputContextDiagnostic> writer,
         CancellationToken cancellationToken)
     {
-        using var probe = new WindowsInputContextProbe();
+        using var eventSource = WindowsInputContextEventSource.Create();
+        var queryRunner = new ObservationQueryRunner(
+            ObserveOnce,
+            QueryTimeout,
+            CircuitCooldown);
         ObservationFingerprint? previousFingerprint = null;
         long generation = 0;
 
@@ -73,7 +80,7 @@ public sealed class InputContextEngine
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                var observation = probe.Observe();
+                var observation = queryRunner.Observe(cancellationToken);
                 if (_ignoreCurrentProcess && observation.Target.ProcessId == Environment.ProcessId)
                 {
                     previousFingerprint = observation.Fingerprint;
@@ -107,15 +114,25 @@ public sealed class InputContextEngine
                     _ = writer.TryWrite(diagnostic);
                 }
 
-                if (cancellationToken.WaitHandle.WaitOne(_sampleInterval))
+                var eventRaised = eventSource.WaitForChange(_sampleInterval, cancellationToken);
+                if (eventRaised && cancellationToken.WaitHandle.WaitOne(EventDebounceInterval))
                 {
                     break;
                 }
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
         finally
         {
             writer.TryComplete();
         }
+    }
+
+    private static RawInputContextObservation ObserveOnce()
+    {
+        using var probe = new WindowsInputContextProbe();
+        return probe.Observe();
     }
 }

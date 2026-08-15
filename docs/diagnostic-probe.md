@@ -81,5 +81,8 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 
 - UIA Caret 优先使用由 CsWin32 从 Windows SDK 元数据生成的原生 COM `IUIAutomationTextPattern2.GetCaretRange`，不支持时再降级到托管 `TextPattern` 的折叠选区矩形。
 - 已同时采集 Win32 `GetGUIThreadInfo` 和 MSAA `OBJID_CARET` 作为对照，但它们只能提供 Anchor，不能证明目标可编辑。
-- UIA 事件订阅、查询超时熔断，以及来自真实应用的黄金 Trace 采集仍属于阶段 1 后续工作。
+- UIA 焦点和文本选区变化会触发重新观察；事件缺失时每秒进行一次兜底观察。事件回调只发送信号，不读取目标内容。
+- 单次 UIA 观察有 250ms 上限。超时期间不会并发创建更多查询线程，迟到结果丢弃；线程退出并经过冷却时间后才尝试恢复。
+- 发布结果前会再次核对前台窗口、Win32 焦点窗口和 UIA RuntimeId；快速切换过程中拼接出的跨目标证据统一按 `ConflictingEvidence` 隐藏。
+- 来自 Edge、Chrome 和系统对话框的黄金 Trace 采集仍属于阶段 1 后续工作。
 - 当前输入状态保持 `Unknown`，微软拼音和 Caps Lock 在阶段 3 接入。
