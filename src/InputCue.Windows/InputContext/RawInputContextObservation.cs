@@ -9,6 +9,8 @@ internal sealed record RawInputContextObservation(
     int SelectionIdentity,
     TargetDescriptor Target,
     InputEvidence Evidence,
+    UiAutomationCaretMethod UiAutomationCaretMethod,
+    TextPattern2Status TextPattern2Status,
     double DurationMilliseconds)
 {
     internal ObservationFingerprint Fingerprint => new(

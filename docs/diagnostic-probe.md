@@ -66,7 +66,7 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 
 ## 导出与隐私
 
-“导出脱敏 JSON”只在用户主动选择文件后写入，最多包含最近 200 条观察。允许的字段包括进程基名、进程 ID、UI 框架、控件类型、控件类名、布尔语义、坐标、原因码和耗时。
+“导出脱敏 JSON”只在用户主动选择文件后写入，最多包含最近 200 条观察。文件带有独立的 `SchemaVersion` 和导出时间，可由 `InputContextTraceReplay` 重新执行当前分类器，以发现算法修改造成的语义漂移。允许的字段包括进程基名、进程 ID、UI 框架、控件类型、控件类名、布尔语义、坐标、原因码和耗时。
 
 不会记录：
 
@@ -79,7 +79,7 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 
 ## 当前已知边界
 
-- 目前 UIA 路径使用托管 `TextPattern` 的折叠选区矩形；托管 API 没有暴露 `TextPattern2.GetCaretRange`。
+- UIA Caret 优先使用由 CsWin32 从 Windows SDK 元数据生成的原生 COM `IUIAutomationTextPattern2.GetCaretRange`，不支持时再降级到托管 `TextPattern` 的折叠选区矩形。
 - 已同时采集 Win32 `GetGUIThreadInfo` 和 MSAA `OBJID_CARET` 作为对照，但它们只能提供 Anchor，不能证明目标可编辑。
-- 原生 COM `IUIAutomationTextPattern2`、UIA 事件订阅、查询超时熔断和 Trace 自动回放仍属于阶段 1 后续工作。
+- UIA 事件订阅、查询超时熔断，以及来自真实应用的黄金 Trace 采集仍属于阶段 1 后续工作。
 - 当前输入状态保持 `Unknown`，微软拼音和 Caps Lock 在阶段 3 接入。

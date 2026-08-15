@@ -1,0 +1,10 @@
+CUIAutomation8
+IUIAutomation
+IUIAutomationElement
+IUIAutomationTextPattern2
+IUIAutomationTextRange
+SafeArrayAccessData
+SafeArrayDestroy
+SafeArrayGetLBound
+SafeArrayGetUBound
+SafeArrayUnaccessData

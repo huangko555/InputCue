@@ -82,7 +82,8 @@ public partial class MainWindow : Window, IDisposable
 
         try
         {
-            var json = JsonSerializer.Serialize(_history, JsonOptions);
+            var trace = InputContextTrace.Create(_history);
+            var json = JsonSerializer.Serialize(trace, JsonOptions);
             await File.WriteAllTextAsync(dialog.FileName, json, Encoding.UTF8);
             StatusText.Text = $"已导出 {_history.Count} 条脱敏观察。";
         }
@@ -169,12 +170,15 @@ public partial class MainWindow : Window, IDisposable
             ControlType       {ValueOrUnknown(diagnostic.Target.ControlType)}
             ClassName         {ValueOrUnknown(diagnostic.Target.ClassName)}
 
+            HasEditableFocus  {diagnostic.HasEditableFocus}
             IsReadOnly        {ValueOrUnknown(diagnostic.IsReadOnly)}
             HasSelection      {ValueOrUnknown(diagnostic.HasSelection)}
             AnchorSource      {snapshot.AnchorSource}
             Anchor            {FormatRectangle(snapshot.Anchor)}
 
             UIA Caret         {FormatRectangle(diagnostic.UiAutomationCaret)}
+            UIA Caret Method  {diagnostic.UiAutomationCaretMethod}
+            TextPattern2      {diagnostic.TextPattern2Status}
             Win32 Caret       {FormatRectangle(diagnostic.Win32Caret)}
             MSAA Caret        {FormatRectangle(diagnostic.MsaaCaret)}
             ProbeIssue        {diagnostic.Issue}

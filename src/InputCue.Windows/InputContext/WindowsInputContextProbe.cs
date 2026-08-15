@@ -8,9 +8,11 @@ using InputCue.Windows.Interop;
 
 namespace InputCue.Windows.InputContext;
 
-internal sealed class WindowsInputContextProbe
+internal sealed class WindowsInputContextProbe : IDisposable
 {
-    internal static RawInputContextObservation Observe()
+    private readonly NativeTextPattern2CaretProbe _textPattern2CaretProbe = new();
+
+    internal RawInputContextObservation Observe()
     {
         var startedAt = Stopwatch.GetTimestamp();
         var foregroundWindow = NativeMethods.GetForegroundWindow();
@@ -64,6 +66,13 @@ internal sealed class WindowsInputContextProbe
             var valuePattern = GetPattern<ValuePattern>(focusedElement, ValuePattern.Pattern);
             var isReadOnly = ReadOnlyState(textPattern, valuePattern);
             var textObservation = ObserveText(textPattern);
+            var textPattern2 = _textPattern2CaretProbe.TryGetCaret();
+            var uiAutomationCaret = textPattern2.Caret ?? textObservation.Caret;
+            var uiAutomationCaretMethod = textPattern2.Caret is not null
+                ? UiAutomationCaretMethod.TextPattern2
+                : textObservation.Caret is not null
+                    ? UiAutomationCaretMethod.TextPattern
+                    : UiAutomationCaretMethod.None;
             var win32Caret = Win32Caret(threadInfo);
             var msaaCaret = MsaaCaret(focusWindow == 0 ? foregroundWindow : focusWindow);
             var hasEditableFocus = current.HasKeyboardFocus && current.IsEnabled && isReadOnly is false;
@@ -78,7 +87,7 @@ internal sealed class WindowsInputContextProbe
                 hasEditableFocus,
                 isReadOnly,
                 textObservation.HasSelection,
-                textObservation.Caret,
+                uiAutomationCaret,
                 win32Caret,
                 msaaCaret);
 
@@ -89,6 +98,8 @@ internal sealed class WindowsInputContextProbe
                 textObservation.SelectionIdentity,
                 target,
                 evidence,
+                uiAutomationCaretMethod,
+                textPattern2.Status,
                 Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
         }
         catch (UnauthorizedAccessException)
@@ -123,6 +134,8 @@ internal sealed class WindowsInputContextProbe
     private static TPattern? GetPattern<TPattern>(AutomationElement element, AutomationPattern pattern)
         where TPattern : class =>
         element.TryGetCurrentPattern(pattern, out var value) ? value as TPattern : null;
+
+    public void Dispose() => _textPattern2CaretProbe.Dispose();
 
     private static bool? ReadOnlyState(TextPattern? textPattern, ValuePattern? valuePattern)
     {
@@ -312,6 +325,8 @@ internal sealed class WindowsInputContextProbe
             0,
             target,
             evidence,
+            UiAutomationCaretMethod.None,
+            TextPattern2Status.NotAttempted,
             Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
     }
 

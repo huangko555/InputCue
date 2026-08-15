@@ -65,6 +65,7 @@ public sealed class InputContextEngine
         ChannelWriter<InputContextDiagnostic> writer,
         CancellationToken cancellationToken)
     {
+        using var probe = new WindowsInputContextProbe();
         ObservationFingerprint? previousFingerprint = null;
         long generation = 0;
 
@@ -72,7 +73,7 @@ public sealed class InputContextEngine
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                var observation = WindowsInputContextProbe.Observe();
+                var observation = probe.Observe();
                 if (_ignoreCurrentProcess && observation.Target.ProcessId == Environment.ProcessId)
                 {
                     previousFingerprint = observation.Fingerprint;
@@ -93,9 +94,12 @@ public sealed class InputContextEngine
                     var diagnostic = new InputContextDiagnostic(
                         snapshot,
                         observation.Target,
+                        observation.Evidence.HasEditableFocus,
                         observation.Evidence.IsReadOnly,
                         observation.Evidence.HasSelection,
                         observation.Evidence.UiAutomationCaret,
+                        observation.UiAutomationCaretMethod,
+                        observation.TextPattern2Status,
                         observation.Evidence.Win32Caret,
                         observation.Evidence.MsaaCaret,
                         observation.Evidence.Issue,
