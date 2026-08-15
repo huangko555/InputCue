@@ -87,5 +87,5 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 - 单次 UIA 观察有 250ms 上限。超时期间不会并发创建更多查询线程，迟到结果丢弃；线程退出并经过冷却时间后才尝试恢复。
 - 发布结果前会再次核对前台窗口、Win32 焦点窗口和 UIA RuntimeId；快速切换过程中拼接出的跨目标证据统一按 `ConflictingEvidence` 隐藏。
 - 只有 UIA `Edit` 和 `Document` 控件可以建立文本编辑资格；单选按钮等非文本控件即使报告可写 Value 或残留 MSAA Caret，也必须判定为 `NoEditableFocus`。
-- Edge 和 Chrome 黄金 Trace 已建立；系统对话框的独立人工采集仍属于阶段 1 后续工作。
+- Edge、Chrome 和系统对话框黄金 Trace 已建立；阶段 1 还需完成快速焦点切换的独立人工采集。
 - 当前输入状态保持 `Unknown`，微软拼音和 Caps Lock 在阶段 3 接入。

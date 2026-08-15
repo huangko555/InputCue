@@ -9,8 +9,19 @@ public static class InputContextGoldenTrace
     {
         ArgumentNullException.ThrowIfNull(observations);
 
+        var generationMap = new Dictionary<long, long>();
+        long nextGeneration = 0;
         var canonicalObservations = observations
-            .Select(Canonicalize)
+            .Select((diagnostic, index) =>
+            {
+                if (!generationMap.TryGetValue(diagnostic.Snapshot.Generation, out var generation))
+                {
+                    generation = checked(++nextGeneration);
+                    generationMap.Add(diagnostic.Snapshot.Generation, generation);
+                }
+
+                return Canonicalize(diagnostic, index, generation);
+            })
             .ToArray();
         return new InputContextTrace(
             InputContextTrace.CurrentSchemaVersion,
@@ -20,9 +31,9 @@ public static class InputContextGoldenTrace
 
     private static InputContextDiagnostic Canonicalize(
         InputContextDiagnostic diagnostic,
-        int index)
+        int index,
+        long generation)
     {
-        var generation = checked(index + 1L);
         var observedAt = CanonicalTimestamp.AddMilliseconds(index);
         var snapshot = diagnostic.Snapshot with
         {

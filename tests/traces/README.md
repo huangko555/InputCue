@@ -34,6 +34,12 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj -c Release -- --probe-
 
 `chrome-basic.json` 使用与 Edge 相同的独立人工步骤采集，覆盖输入框光标、输入框选区、静态正文选区和单选按钮。额外的转换采集确认 `EditableCaret → NoEditableFocus(Document) → ReadOnlySelection(Document)`。Chrome 与 Edge 共用通用策略，但保留各自 Trace，避免只在一个 Chromium 宿主上通过测试。
 
+## 系统对话框基线
+
+`system-dialog-basic.json` 来自记事本“打开文件”系统对话框的分步人工采集，覆盖文件名编辑框、下拉框和按钮。前两个编辑框观察来自一次独立悬停采集：获得编辑焦点后仅把鼠标移到“取消”按钮，20 次观察始终属于同一个 Generation 和同一个 `Edit` 目标。下拉框和按钮获得键盘焦点后均为 `NoEditableFocus`。
+
+黄金 Trace 的全部 JSON 文件会复制到测试输出目录，并由回放测试验证当前分类器没有产生语义漂移。
+
 ## Edge / Chrome 人工采集
 
 浏览器自动化可以改变 DOM，但不保证把 Windows 前台焦点交给真实浏览器窗口，因此不能用自动化点击生成兼容性结论。采集时运行：
