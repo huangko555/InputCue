@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.302
+
+      - name: Restore
+        run: dotnet restore InputCue.sln
+
+      - name: Build
+        run: dotnet build InputCue.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test InputCue.sln --configuration Release --no-build
+
+      - name: Smoke test application startup
+        shell: pwsh
+        run: |
+          $appPath = Join-Path $PWD 'src/InputCue.App/bin/Release/net10.0-windows/InputCue.exe'
+          $process = Start-Process -FilePath $appPath -ArgumentList '--smoke-test' -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "InputCue smoke test failed with exit code $($process.ExitCode)."
+          }

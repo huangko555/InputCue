@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\InputCue.Core\InputCue.Core.csproj" />
+    <ProjectReference Include="..\InputCue.Windows\InputCue.Windows.csproj" />
+    <ProjectReference Include="..\InputCue.Overlay\InputCue.Overlay.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>InputCue</AssemblyName>
+    <RootNamespace>InputCue.App</RootNamespace>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+</Project>
