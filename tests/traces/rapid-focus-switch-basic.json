@@ -1,0 +1,180 @@
+{
+  "SchemaVersion": 1,
+  "ExportedAt": "1970-01-01T00:00:00+00:00",
+  "Observations": [
+    {
+      "Snapshot": {
+        "Generation": 1,
+        "ObservedAt": "1970-01-01T00:00:00+00:00",
+        "Eligibility": "EditableCaret",
+        "InputState": "Unknown",
+        "Anchor": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+        "AnchorSource": "UiAutomation",
+        "EvidenceGrade": "Confirmed",
+        "ReasonCode": "EditableCaretConfirmed"
+      },
+      "Target": {
+        "ProcessId": 0,
+        "ProcessName": "chrome",
+        "ControlType": "ControlType.Edit",
+        "ClassName": "",
+        "FrameworkId": "Chrome"
+      },
+      "HasEditableFocus": true,
+      "IsReadOnly": false,
+      "HasSelection": false,
+      "UiAutomationCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "UiAutomationCaretMethod": "TextPattern",
+      "TextPattern2Status": "PatternUnavailable",
+      "Win32Caret": null,
+      "MsaaCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "Issue": "None",
+      "DurationMilliseconds": 0
+    },
+    {
+      "Snapshot": {
+        "Generation": 2,
+        "ObservedAt": "1970-01-01T00:00:00.001+00:00",
+        "Eligibility": "EditableCaret",
+        "InputState": "Unknown",
+        "Anchor": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+        "AnchorSource": "UiAutomation",
+        "EvidenceGrade": "Confirmed",
+        "ReasonCode": "EditableCaretConfirmed"
+      },
+      "Target": {
+        "ProcessId": 0,
+        "ProcessName": "Notepad",
+        "ControlType": "ControlType.Document",
+        "ClassName": "RichEditD2DPT",
+        "FrameworkId": "Win32"
+      },
+      "HasEditableFocus": true,
+      "IsReadOnly": false,
+      "HasSelection": false,
+      "UiAutomationCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "UiAutomationCaretMethod": "TextPattern2",
+      "TextPattern2Status": "Succeeded",
+      "Win32Caret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "MsaaCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "Issue": "None",
+      "DurationMilliseconds": 0
+    },
+    {
+      "Snapshot": {
+        "Generation": 3,
+        "ObservedAt": "1970-01-01T00:00:00.002+00:00",
+        "Eligibility": "EditableCaret",
+        "InputState": "Unknown",
+        "Anchor": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+        "AnchorSource": "UiAutomation",
+        "EvidenceGrade": "Confirmed",
+        "ReasonCode": "EditableCaretConfirmed"
+      },
+      "Target": {
+        "ProcessId": 0,
+        "ProcessName": "chrome",
+        "ControlType": "ControlType.Edit",
+        "ClassName": "",
+        "FrameworkId": "Chrome"
+      },
+      "HasEditableFocus": true,
+      "IsReadOnly": false,
+      "HasSelection": false,
+      "UiAutomationCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "UiAutomationCaretMethod": "TextPattern",
+      "TextPattern2Status": "PatternUnavailable",
+      "Win32Caret": null,
+      "MsaaCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "Issue": "None",
+      "DurationMilliseconds": 0
+    },
+    {
+      "Snapshot": {
+        "Generation": 4,
+        "ObservedAt": "1970-01-01T00:00:00.003+00:00",
+        "Eligibility": "EditableCaret",
+        "InputState": "Unknown",
+        "Anchor": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+        "AnchorSource": "UiAutomation",
+        "EvidenceGrade": "Confirmed",
+        "ReasonCode": "EditableCaretConfirmed"
+      },
+      "Target": {
+        "ProcessId": 0,
+        "ProcessName": "Notepad",
+        "ControlType": "ControlType.Document",
+        "ClassName": "RichEditD2DPT",
+        "FrameworkId": "Win32"
+      },
+      "HasEditableFocus": true,
+      "IsReadOnly": false,
+      "HasSelection": false,
+      "UiAutomationCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "UiAutomationCaretMethod": "TextPattern2",
+      "TextPattern2Status": "Succeeded",
+      "Win32Caret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "MsaaCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "Issue": "None",
+      "DurationMilliseconds": 0
+    },
+    {
+      "Snapshot": {
+        "Generation": 5,
+        "ObservedAt": "1970-01-01T00:00:00.004+00:00",
+        "Eligibility": "EditableCaret",
+        "InputState": "Unknown",
+        "Anchor": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+        "AnchorSource": "UiAutomation",
+        "EvidenceGrade": "Confirmed",
+        "ReasonCode": "EditableCaretConfirmed"
+      },
+      "Target": {
+        "ProcessId": 0,
+        "ProcessName": "chrome",
+        "ControlType": "ControlType.Edit",
+        "ClassName": "",
+        "FrameworkId": "Chrome"
+      },
+      "HasEditableFocus": true,
+      "IsReadOnly": false,
+      "HasSelection": false,
+      "UiAutomationCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "UiAutomationCaretMethod": "TextPattern",
+      "TextPattern2Status": "PatternUnavailable",
+      "Win32Caret": null,
+      "MsaaCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "Issue": "None",
+      "DurationMilliseconds": 0
+    },
+    {
+      "Snapshot": {
+        "Generation": 5,
+        "ObservedAt": "1970-01-01T00:00:00.005+00:00",
+        "Eligibility": "EditableCaret",
+        "InputState": "Unknown",
+        "Anchor": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+        "AnchorSource": "UiAutomation",
+        "EvidenceGrade": "Confirmed",
+        "ReasonCode": "EditableCaretConfirmed"
+      },
+      "Target": {
+        "ProcessId": 0,
+        "ProcessName": "chrome",
+        "ControlType": "ControlType.Edit",
+        "ClassName": "",
+        "FrameworkId": "Chrome"
+      },
+      "HasEditableFocus": true,
+      "IsReadOnly": false,
+      "HasSelection": false,
+      "UiAutomationCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "UiAutomationCaretMethod": "TextPattern",
+      "TextPattern2Status": "PatternUnavailable",
+      "Win32Caret": null,
+      "MsaaCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "Issue": "None",
+      "DurationMilliseconds": 0
+    }
+  ]
+}

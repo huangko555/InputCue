@@ -67,6 +67,7 @@ public sealed class InputContextGoldenTraceTests
     [InlineData("edge-basic.json")]
     [InlineData("chrome-basic.json")]
     [InlineData("system-dialog-basic.json")]
+    [InlineData("rapid-focus-switch-basic.json")]
     public void GoldenTraceReplaysWithoutSemanticDrift(string fileName)
     {
         var trace = ReadTrace(fileName);

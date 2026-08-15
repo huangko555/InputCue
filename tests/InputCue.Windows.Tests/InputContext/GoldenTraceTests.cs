@@ -61,6 +61,24 @@ public sealed class GoldenTraceTests
             Assert.Equal(processName, observation.Target.ProcessName));
     }
 
+    [Fact]
+    public void RapidFocusSwitchTraceFinishesOnTheLatestTarget()
+    {
+        var trace = ReadTrace("rapid-focus-switch-basic.json");
+
+        var replayed = InputContextTraceReplay.Reclassify(trace);
+
+        Assert.Equal(
+            ["chrome", "Notepad", "chrome", "Notepad", "chrome", "chrome"],
+            trace.Observations.Select(observation => observation.Target.ProcessName));
+        Assert.Equal(
+            [1L, 2L, 3L, 4L, 5L, 5L],
+            trace.Observations.Select(observation => observation.Snapshot.Generation));
+        Assert.All(trace.Observations, observation => Assert.Equal(ProbeIssue.None, observation.Issue));
+        Assert.All(replayed, snapshot => Assert.Equal(Eligibility.EditableCaret, snapshot.Eligibility));
+        Assert.Equal(trace.Observations[^2].Target, trace.Observations[^1].Target);
+    }
+
     private static InputContextTrace ReadTrace(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "traces", fileName);

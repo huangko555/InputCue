@@ -40,6 +40,10 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj -c Release -- --probe-
 
 黄金 Trace 的全部 JSON 文件会复制到测试输出目录，并由回放测试验证当前分类器没有产生语义漂移。
 
+## 快速焦点切换基线
+
+`rapid-focus-switch-basic.json` 来自 Chrome 输入框与记事本编辑区之间的快速人工切换。黄金文件保留 `Chrome → Notepad → Chrome → Notepad → Chrome` 的最小子序列和最终重复观察：每次目标变化都推进 Generation，最终两个观察保持同一个 Chrome 目标和 Generation，且没有旧 Notepad 结果在最后一次切换后出现。
+
 ## Edge / Chrome 人工采集
 
 浏览器自动化可以改变 DOM，但不保证把 Windows 前台焦点交给真实浏览器窗口，因此不能用自动化点击生成兼容性结论。采集时运行：
