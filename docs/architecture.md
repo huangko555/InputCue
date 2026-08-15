@@ -76,7 +76,7 @@ Interface 只保留 `Apply(viewState)` 和生命周期操作。它不查询输�
 - `AppProfileCatalog`：只承载有回归证据的兼容差异；
 - `ObservationValidator`：校验进程、窗口、焦点、坐标和 Generation 一致性。
 
-`SystemEventSource` 至少需要两个 Adapter：真实 Windows Adapter 和可回放 Trace Adapter，因此这是一个真实 Seam。其他 Probe 先保留为内部实现；只有出现第二个真实 Adapter 时再提升抽象。
+引擎运行时 Seam 有两个 Adapter：真实 Windows Adapter 负责事件订阅和跨进程观察，可控内存 Adapter 负责确定性验证取消、去抖、Generation 和有界发布。脱敏 Trace 通过 Core 回放模块验证分类与显示语义，不伪装成实时系统事件。其他 Probe 先保留为内部实现；只有出现第二个真实 Adapter 时再提升抽象。
 
 ## 可显示状态模型
 

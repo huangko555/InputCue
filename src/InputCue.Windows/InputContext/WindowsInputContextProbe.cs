@@ -106,12 +106,13 @@ internal sealed class WindowsInputContextProbe : IDisposable
                 win32Caret,
                 msaaCaret);
 
-            if (!IsStillCurrent(
-                    foregroundWindow,
-                    foregroundProcessId,
-                    focusWindow,
-                    focusedProcessId,
-                    automationIdentity))
+            var initialIdentity = new ObservationIdentity(
+                foregroundWindow,
+                foregroundProcessId,
+                focusWindow,
+                focusedProcessId,
+                automationIdentity);
+            if (!IsStillCurrent(initialIdentity))
             {
                 return Failure(
                     foregroundWindow,
@@ -230,35 +231,36 @@ internal sealed class WindowsInputContextProbe : IDisposable
         return hash.ToHashCode();
     }
 
-    private static bool IsStillCurrent(
-        nint foregroundWindow,
-        uint foregroundProcessId,
-        nint focusWindow,
-        int focusedProcessId,
-        int automationIdentity)
+    private static bool IsStillCurrent(ObservationIdentity initial)
     {
-        if (NativeMethods.GetForegroundWindow() != foregroundWindow)
-        {
-            return false;
-        }
-
-        var finalThread = NativeMethods.GetWindowThreadProcessId(foregroundWindow, out var finalProcessId);
-        if (finalThread == 0 || finalProcessId != foregroundProcessId)
+        var foregroundWindow = NativeMethods.GetForegroundWindow();
+        var foregroundThread = NativeMethods.GetWindowThreadProcessId(
+            foregroundWindow,
+            out var foregroundProcessId);
+        if (foregroundThread == 0)
         {
             return false;
         }
 
         var finalThreadInfo = GuiThreadInfo.Create();
-        if (!NativeMethods.GetGUIThreadInfo(finalThread, ref finalThreadInfo) ||
-            focusWindow != finalThreadInfo.FocusWindow)
+        if (!NativeMethods.GetGUIThreadInfo(foregroundThread, ref finalThreadInfo))
         {
             return false;
         }
 
         var finalFocusedElement = AutomationElement.FocusedElement;
-        return finalFocusedElement is not null &&
-            finalFocusedElement.Current.ProcessId == focusedProcessId &&
-            AutomationIdentity(finalFocusedElement) == automationIdentity;
+        if (finalFocusedElement is null)
+        {
+            return false;
+        }
+
+        var current = new ObservationIdentity(
+            foregroundWindow,
+            foregroundProcessId,
+            finalThreadInfo.FocusWindow,
+            finalFocusedElement.Current.ProcessId,
+            AutomationIdentity(finalFocusedElement));
+        return ObservationValidator.IsCurrent(initial, current);
     }
 
     private static ScreenRect? FirstRectangle(System.Windows.Rect[] rectangles)

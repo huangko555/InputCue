@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using InputCue.Core.InputContext;
@@ -11,16 +12,31 @@ public sealed class InputContextEngine
     private static readonly TimeSpan QueryTimeout = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan DefaultSampleInterval = TimeSpan.FromSeconds(1);
     private readonly bool _ignoreCurrentProcess;
+    private readonly IInputContextRuntime _runtime;
     private readonly TimeSpan _sampleInterval;
 
     public InputContextEngine(TimeSpan? sampleInterval = null)
-        : this(sampleInterval, ignoreCurrentProcess: true)
+        : this(
+            sampleInterval,
+            ignoreCurrentProcess: true,
+            WindowsInputContextRuntime.Instance)
     {
     }
 
     internal InputContextEngine(TimeSpan? sampleInterval, bool ignoreCurrentProcess)
+        : this(sampleInterval, ignoreCurrentProcess, WindowsInputContextRuntime.Instance)
     {
+    }
+
+    internal InputContextEngine(
+        TimeSpan? sampleInterval,
+        bool ignoreCurrentProcess,
+        IInputContextRuntime runtime)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+
         _ignoreCurrentProcess = ignoreCurrentProcess;
+        _runtime = runtime;
         _sampleInterval = sampleInterval ?? DefaultSampleInterval;
         if (_sampleInterval < TimeSpan.FromMilliseconds(50) ||
             _sampleInterval > TimeSpan.FromSeconds(5))
@@ -68,9 +84,9 @@ public sealed class InputContextEngine
         ChannelWriter<InputContextDiagnostic> writer,
         CancellationToken cancellationToken)
     {
-        using var eventSource = WindowsInputContextEventSource.Create();
+        using var eventSource = _runtime.CreateEventSource();
         var queryRunner = new ObservationQueryRunner(
-            ObserveOnce,
+            _runtime.Observe,
             QueryTimeout,
             CircuitCooldown);
         ObservationFingerprint? previousFingerprint = null;
@@ -115,9 +131,9 @@ public sealed class InputContextEngine
                 }
 
                 var eventRaised = eventSource.WaitForChange(_sampleInterval, cancellationToken);
-                if (eventRaised && cancellationToken.WaitHandle.WaitOne(EventDebounceInterval))
+                if (eventRaised)
                 {
-                    break;
+                    CoalesceChanges(eventSource, cancellationToken);
                 }
             }
         }
@@ -130,9 +146,20 @@ public sealed class InputContextEngine
         }
     }
 
-    private static RawInputContextObservation ObserveOnce()
+    private static void CoalesceChanges(
+        IInputContextEventSource eventSource,
+        CancellationToken cancellationToken)
     {
-        using var probe = new WindowsInputContextProbe();
-        return probe.Observe();
+        var startedAt = Stopwatch.GetTimestamp();
+        var remaining = EventDebounceInterval;
+        while (eventSource.WaitForChange(remaining, cancellationToken))
+        {
+            remaining = EventDebounceInterval - Stopwatch.GetElapsedTime(startedAt);
+            if (remaining <= TimeSpan.Zero)
+            {
+                return;
+            }
+        }
     }
+
 }
