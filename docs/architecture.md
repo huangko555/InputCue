@@ -44,7 +44,7 @@ Interface 只暴露启动、停止和快照流；Windows API 细节属于 Implem
 
 职责：把输入上下文、用户设置和时间转换成纯粹的显示状态，包括显示、隐藏、淡出和状态变化重播。
 
-Interface 接受不可变事件并返回 `IndicatorViewState`。计时、状态优先级和去抖全部在这里完成，避免散落到窗口代码。
+Interface 通过构造策略、`Observe(snapshot)` 和 `Advance(now)` 接受不可变输入并返回 `IndicatorViewState`。Module 不读取系统时钟，也不依赖 Windows 或 WPF；调用方只负责在同一串行执行路径中转交观察和时间。计时、状态优先级、旧 Generation 淘汰和重复观察去抖全部在这里完成，避免散落到窗口代码。
 
 ### OverlayRenderer
 
