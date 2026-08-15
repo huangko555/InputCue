@@ -8,7 +8,10 @@ public sealed class InputContextEngineTests
     [Fact]
     public async Task WatchAsyncPublishesTheObservedInputState()
     {
-        using var runtime = new TestInputContextRuntime(InputState.English);
+        var inputStateEvidence = new InputStateEvidence(0x0409, false, null, null, null);
+        using var runtime = new TestInputContextRuntime(
+            InputState.English,
+            inputStateEvidence);
         var engine = new InputContextEngine(
             TimeSpan.FromSeconds(5),
             ignoreCurrentProcess: false,
@@ -20,6 +23,7 @@ public sealed class InputContextEngineTests
 
         Assert.True(await enumerator.MoveNextAsync());
         Assert.Equal(InputState.English, enumerator.Current.Snapshot.InputState);
+        Assert.Equal(inputStateEvidence, enumerator.Current.InputStateEvidence);
         cancellation.Cancel();
     }
 
@@ -100,11 +104,15 @@ public sealed class InputContextEngineTests
         private readonly ManualResetEventSlim _changeWasObserved = new();
         private readonly AutoResetEvent _signal = new(initialState: false);
         private readonly InputState _inputState;
+        private readonly InputStateEvidence _inputStateEvidence;
         private int _observationCount;
 
-        internal TestInputContextRuntime(InputState inputState = InputState.Unknown)
+        internal TestInputContextRuntime(
+            InputState inputState = InputState.Unknown,
+            InputStateEvidence? inputStateEvidence = null)
         {
             _inputState = inputState;
+            _inputStateEvidence = inputStateEvidence ?? InputStateEvidence.Unavailable;
         }
 
         internal ManualResetEventSlim ChangeWasObserved => _changeWasObserved;
@@ -122,6 +130,7 @@ public sealed class InputContextEngineTests
                 0,
                 new TargetDescriptor(identity, $"target-{identity}", "ControlType.Edit", "Edit", "Test"),
                 _inputState,
+                _inputStateEvidence,
                 new InputEvidence(true, false, false, new ScreenRect(100, 120, 2, 20), null, null),
                 UiAutomationCaretMethod.TextPattern,
                 TextPattern2Status.PatternUnavailable,

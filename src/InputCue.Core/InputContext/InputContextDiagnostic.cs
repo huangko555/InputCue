@@ -12,4 +12,5 @@ public sealed record InputContextDiagnostic(
     ScreenRect? Win32Caret,
     ScreenRect? MsaaCaret,
     ProbeIssue Issue,
-    double DurationMilliseconds);
+    double DurationMilliseconds,
+    InputStateEvidence? InputStateEvidence = null);

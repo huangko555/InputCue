@@ -126,7 +126,8 @@ public sealed class InputContextEngine
                         observation.Evidence.Win32Caret,
                         observation.Evidence.MsaaCaret,
                         observation.Evidence.Issue,
-                        observation.DurationMilliseconds);
+                        observation.DurationMilliseconds,
+                        observation.InputStateEvidence);
                     _ = writer.TryWrite(diagnostic);
                 }
 

@@ -21,6 +21,24 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool ImmIsIME(nint keyboardLayout);
 
+    [LibraryImport("imm32.dll")]
+    internal static partial nint ImmGetContext(nint window);
+
+    [LibraryImport("imm32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ImmReleaseContext(nint window, nint inputContext);
+
+    [LibraryImport("imm32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ImmGetOpenStatus(nint inputContext);
+
+    [LibraryImport("imm32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ImmGetConversionStatus(
+        nint inputContext,
+        out uint conversionMode,
+        out uint sentenceMode);
+
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetGUIThreadInfo(uint threadId, ref GuiThreadInfo info);

@@ -31,7 +31,8 @@ internal sealed class WindowsInputStateProbe
             state,
             targetWindow,
             facts.ThreadId,
-            facts.KeyboardLayout);
+            facts.KeyboardLayout,
+            Evidence(facts));
     }
 
     internal bool IsCurrent(InputStateObservation observation)
@@ -45,7 +46,23 @@ internal sealed class WindowsInputStateProbe
 
         var current = _factsReader.Read(observation.TargetWindow);
         return current.ThreadId == observation.ThreadId &&
-            current.KeyboardLayout == observation.KeyboardLayout;
+            current.KeyboardLayout == observation.KeyboardLayout &&
+            Evidence(current) == observation.Evidence;
+    }
+
+    private static InputStateEvidence Evidence(InputStateFacts facts)
+    {
+        if (facts.ThreadId == 0 || facts.KeyboardLayout == 0)
+        {
+            return InputStateEvidence.Unavailable;
+        }
+
+        return new InputStateEvidence(
+            (ushort)(facts.KeyboardLayout.ToInt64() & 0xFFFF),
+            facts.IsIme,
+            facts.IsIme ? facts.HasImeContext : null,
+            facts.ImeOpen,
+            facts.ConversionMode);
     }
 }
 
@@ -53,19 +70,24 @@ internal sealed record InputStateObservation(
     InputState State,
     nint TargetWindow,
     uint ThreadId,
-    nint KeyboardLayout)
+    nint KeyboardLayout,
+    InputStateEvidence Evidence)
 {
     internal static readonly InputStateObservation Unknown = new(
         InputState.Unknown,
         0,
         0,
-        0);
+        0,
+        InputStateEvidence.Unavailable);
 }
 
 internal readonly record struct InputStateFacts(
     uint ThreadId,
     nint KeyboardLayout,
-    bool IsIme);
+    bool IsIme,
+    bool? HasImeContext = null,
+    bool? ImeOpen = null,
+    uint? ConversionMode = null);
 
 internal interface IInputStateFactsReader
 {
@@ -94,11 +116,45 @@ internal sealed class WindowsInputStateFactsReader : IInputStateFactsReader
         }
 
         var keyboardLayout = NativeMethods.GetKeyboardLayout(threadId);
-        return keyboardLayout == 0
-            ? default
-            : new InputStateFacts(
+        if (keyboardLayout == 0)
+        {
+            return default;
+        }
+
+        var isIme = NativeMethods.ImmIsIME(keyboardLayout);
+        if (!isIme)
+        {
+            return new InputStateFacts(threadId, keyboardLayout, false);
+        }
+
+        var inputContext = NativeMethods.ImmGetContext(targetWindow);
+        if (inputContext == 0)
+        {
+            return new InputStateFacts(
                 threadId,
                 keyboardLayout,
-                NativeMethods.ImmIsIME(keyboardLayout));
+                true,
+                HasImeContext: false);
+        }
+
+        try
+        {
+            var imeOpen = NativeMethods.ImmGetOpenStatus(inputContext);
+            var hasConversionStatus = NativeMethods.ImmGetConversionStatus(
+                inputContext,
+                out var conversionMode,
+                out _);
+            return new InputStateFacts(
+                threadId,
+                keyboardLayout,
+                true,
+                HasImeContext: true,
+                ImeOpen: imeOpen,
+                ConversionMode: hasConversionStatus ? conversionMode : null);
+        }
+        finally
+        {
+            _ = NativeMethods.ImmReleaseContext(targetWindow, inputContext);
+        }
     }
 }

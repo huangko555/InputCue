@@ -24,12 +24,23 @@ public sealed class WindowsInputStateProbeTests
     public void ObserveKeepsImeLayoutsUnknownUntilAProfileIsVerified()
     {
         var reader = new StubInputStateFactsReader(
-            new InputStateFacts(7, 0x0804, true));
+            new InputStateFacts(
+                7,
+                0x0804,
+                true,
+                HasImeContext: true,
+                ImeOpen: true,
+                ConversionMode: 0x0001));
         var probe = new WindowsInputStateProbe(reader);
 
         var observation = probe.Observe(42);
 
         Assert.Equal(InputState.Unknown, observation.State);
+        Assert.Equal((ushort)0x0804, observation.Evidence.LanguageId);
+        Assert.True(observation.Evidence.IsIme);
+        Assert.True(observation.Evidence.HasImeContext);
+        Assert.True(observation.Evidence.ImeOpen);
+        Assert.Equal((uint)0x0001, observation.Evidence.ConversionMode);
     }
 
     [Theory]
@@ -54,6 +65,20 @@ public sealed class WindowsInputStateProbeTests
         var reader = new StubInputStateFactsReader(
             new InputStateFacts(7, 0x0409, false),
             new InputStateFacts(7, 0x0804, true));
+        var probe = new WindowsInputStateProbe(reader);
+        var observation = probe.Observe(42);
+
+        var isCurrent = probe.IsCurrent(observation);
+
+        Assert.False(isCurrent);
+    }
+
+    [Fact]
+    public void IsCurrentRejectsAnImeConversionModeChange()
+    {
+        var reader = new StubInputStateFactsReader(
+            new InputStateFacts(7, 0x0804, true, true, true, 0x0001),
+            new InputStateFacts(7, 0x0804, true, true, true, 0x0000));
         var probe = new WindowsInputStateProbe(reader);
         var observation = probe.Observe(42);
 

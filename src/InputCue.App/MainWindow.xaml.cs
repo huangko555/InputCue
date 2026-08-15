@@ -157,12 +157,18 @@ public partial class MainWindow : Window, IDisposable
     private static string FormatDiagnostic(InputContextDiagnostic diagnostic)
     {
         var snapshot = diagnostic.Snapshot;
+        var inputStateEvidence = diagnostic.InputStateEvidence ?? InputStateEvidence.Unavailable;
         return string.Create(
             CultureInfo.InvariantCulture,
             $"""
             Generation        {snapshot.Generation}
             Eligibility       {snapshot.Eligibility}
             InputState        {snapshot.InputState}
+            InputLanguage     {FormatHex(inputStateEvidence.LanguageId)}
+            IsIME             {ValueOrUnknown(inputStateEvidence.IsIme)}
+            HasIMEContext     {ValueOrUnknown(inputStateEvidence.HasImeContext)}
+            IMEOpen           {ValueOrUnknown(inputStateEvidence.ImeOpen)}
+            ConversionMode    {FormatHex(inputStateEvidence.ConversionMode)}
             EvidenceGrade     {snapshot.EvidenceGrade}
             ReasonCode        {snapshot.ReasonCode}
 
@@ -203,4 +209,12 @@ public partial class MainWindow : Window, IDisposable
         false => "false",
         null => "unknown",
     };
+
+    private static string FormatHex(ushort? value) => value is null
+        ? "unknown"
+        : string.Create(CultureInfo.InvariantCulture, $"0x{value.Value:X4}");
+
+    private static string FormatHex(uint? value) => value is null
+        ? "unknown"
+        : string.Create(CultureInfo.InvariantCulture, $"0x{value.Value:X8}");
 }

@@ -16,6 +16,8 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 
 - `Eligibility`：最终语义分类；
 - `InputState`：输入状态；当前仅把稳定的非 IME 布局标为 `English`，其余为 `Unknown`；
+- `InputLanguage`：前台输入线程 HKL 的语言 ID，仅用于兼容诊断；
+- `IsIME / HasIMEContext / IMEOpen / ConversionMode`：IMM32 实验事实；它们不会在画像验证前直接映射成中文或英文；
 - `EvidenceGrade`：证据是已确认、已降级还是未知；
 - `ReasonCode`：为什么显示、隐藏或降级；
 - `IsReadOnly`：目标是否只读；
@@ -90,4 +92,5 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 - 只有 UIA `Edit` 和 `Document` 控件可以建立文本编辑资格；单选按钮等非文本控件即使报告可写 Value 或残留 MSAA Caret，也必须判定为 `NoEditableFocus`。
 - Edge、Chrome、系统对话框和快速焦点切换黄金 Trace 已建立，阶段 1 的五个首批场景均已完成独立人工验收。
 - 输入状态与 Caret 在同一次观察中采样，并在发布前复核目标线程与 HKL；布局变化时旧结果按 `ConflictingEvidence` 隐藏。
+- IMM32 模式也会前后复核；采样期间模式变化时整条观察按 `ConflictingEvidence` 丢弃。
 - 当前只把稳定的非 IME 布局标为 `English`。微软拼音中/英文与 Caps Lock 仍为实验来源，未通过实机兼容矩阵前保持 `Unknown`；技术依据见 `windows-input-state-research.md`。

@@ -33,6 +33,7 @@ public sealed class ObservationFingerprintTests
             selectionIdentity,
             new TargetDescriptor(4, "browser", "Document", "", "Chrome"),
             inputState,
+            InputStateEvidence.Unavailable,
             new InputEvidence(false, true, true, null, null, null),
             UiAutomationCaretMethod.None,
             TextPattern2Status.NotAttempted,
