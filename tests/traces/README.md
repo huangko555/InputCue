@@ -38,7 +38,7 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj -c Release -- --probe-
 
 `system-dialog-basic.json` 来自记事本“打开文件”系统对话框的分步人工采集，覆盖文件名编辑框、下拉框和按钮。前两个编辑框观察来自一次独立悬停采集：获得编辑焦点后仅把鼠标移到“取消”按钮，20 次观察始终属于同一个 Generation 和同一个 `Edit` 目标。下拉框和按钮获得键盘焦点后均为 `NoEditableFocus`。
 
-黄金 Trace 的全部 JSON 文件会复制到测试输出目录，并由回放测试验证当前分类器没有产生语义漂移。
+黄金 Trace 的全部 JSON 文件会复制到测试输出目录，并由回放测试验证当前分类器没有产生语义漂移，也会以统一的已知输入状态驱动 `IndicatorSession`，验证完整链路的显示/隐藏序列。
 
 ## 快速焦点切换基线
 
