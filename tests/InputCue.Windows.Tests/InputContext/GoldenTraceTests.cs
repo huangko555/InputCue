@@ -38,10 +38,14 @@ public sealed class GoldenTraceTests
         Assert.All(replayed.Skip(1), snapshot => Assert.Null(snapshot.Anchor));
     }
 
-    [Fact]
-    public void EdgeTraceDistinguishesTextEditingFromDocumentSelectionAndRadioButton()
+    [Theory]
+    [InlineData("edge-basic.json", "msedge")]
+    [InlineData("chrome-basic.json", "chrome")]
+    public void ChromiumTraceDistinguishesTextEditingFromDocumentSelectionAndRadioButton(
+        string fileName,
+        string processName)
     {
-        var trace = ReadTrace("edge-basic.json");
+        var trace = ReadTrace(fileName);
 
         var replayed = InputContextTraceReplay.Reclassify(trace);
 
@@ -53,6 +57,8 @@ public sealed class GoldenTraceTests
             snapshot => Assert.Equal(Eligibility.NoEditableFocus, snapshot.Eligibility));
         Assert.Equal("ControlType.RadioButton", trace.Observations[3].Target.ControlType);
         Assert.False(trace.Observations[3].HasEditableFocus);
+        Assert.All(trace.Observations, observation =>
+            Assert.Equal(processName, observation.Target.ProcessName));
     }
 
     private static InputContextTrace ReadTrace(string fileName)
