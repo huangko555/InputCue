@@ -11,6 +11,7 @@ namespace InputCue.Windows.InputContext;
 internal sealed class WindowsInputContextProbe : IDisposable
 {
     private readonly NativeTextPattern2CaretProbe _textPattern2CaretProbe = new();
+    private readonly WindowsInputStateProbe _inputStateProbe = new();
 
     internal RawInputContextObservation Observe()
     {
@@ -91,6 +92,14 @@ internal sealed class WindowsInputContextProbe : IDisposable
             var msaaCaret = shouldProbeCaret
                 ? MsaaCaret(focusWindow == 0 ? foregroundWindow : focusWindow)
                 : null;
+            var hasCaret = uiAutomationCaret is { IsUsable: true } ||
+                win32Caret is { IsUsable: true } ||
+                msaaCaret is { IsUsable: true };
+            var inputState = hasEditableFocus &&
+                textObservation.HasSelection is not true &&
+                hasCaret
+                ? _inputStateProbe.Observe(focusWindow == 0 ? foregroundWindow : focusWindow)
+                : InputStateObservation.Unknown;
 
             var target = new TargetDescriptor(
                 focusedProcessId,
@@ -122,12 +131,23 @@ internal sealed class WindowsInputContextProbe : IDisposable
                     focusedProcessId);
             }
 
+            if (!_inputStateProbe.IsCurrent(inputState))
+            {
+                return Failure(
+                    foregroundWindow,
+                    focusWindow,
+                    ProbeIssue.ConflictingEvidence,
+                    startedAt,
+                    focusedProcessId);
+            }
+
             return new RawInputContextObservation(
                 foregroundWindow,
                 focusWindow,
                 automationIdentity,
                 textObservation.SelectionIdentity,
                 target,
+                inputState.State,
                 evidence,
                 uiAutomationCaretMethod,
                 textPattern2.Status,
@@ -387,6 +407,7 @@ internal sealed class WindowsInputContextProbe : IDisposable
             0,
             0,
             target,
+            InputState.Unknown,
             evidence,
             UiAutomationCaretMethod.None,
             TextPattern2Status.NotAttempted,

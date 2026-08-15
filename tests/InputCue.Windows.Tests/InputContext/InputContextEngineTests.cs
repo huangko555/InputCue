@@ -6,6 +6,24 @@ namespace InputCue.Windows.Tests.InputContext;
 public sealed class InputContextEngineTests
 {
     [Fact]
+    public async Task WatchAsyncPublishesTheObservedInputState()
+    {
+        using var runtime = new TestInputContextRuntime(InputState.English);
+        var engine = new InputContextEngine(
+            TimeSpan.FromSeconds(5),
+            ignoreCurrentProcess: false,
+            runtime);
+        using var cancellation = new CancellationTokenSource();
+        await using var enumerator = engine
+            .WatchAsync(cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.Equal(InputState.English, enumerator.Current.Snapshot.InputState);
+        cancellation.Cancel();
+    }
+
+    [Fact]
     public async Task WatchAsyncStopsWhenCancellationIsRequested()
     {
         using var runtime = new TestInputContextRuntime();
@@ -81,7 +99,13 @@ public sealed class InputContextEngineTests
     {
         private readonly ManualResetEventSlim _changeWasObserved = new();
         private readonly AutoResetEvent _signal = new(initialState: false);
+        private readonly InputState _inputState;
         private int _observationCount;
+
+        internal TestInputContextRuntime(InputState inputState = InputState.Unknown)
+        {
+            _inputState = inputState;
+        }
 
         internal ManualResetEventSlim ChangeWasObserved => _changeWasObserved;
 
@@ -97,6 +121,7 @@ public sealed class InputContextEngineTests
                 identity,
                 0,
                 new TargetDescriptor(identity, $"target-{identity}", "ControlType.Edit", "Edit", "Test"),
+                _inputState,
                 new InputEvidence(true, false, false, new ScreenRect(100, 120, 2, 20), null, null),
                 UiAutomationCaretMethod.TextPattern,
                 TextPattern2Status.PatternUnavailable,

@@ -162,6 +162,7 @@ public partial class MainWindow : Window, IDisposable
             $"""
             Generation        {snapshot.Generation}
             Eligibility       {snapshot.Eligibility}
+            InputState        {snapshot.InputState}
             EvidenceGrade     {snapshot.EvidenceGrade}
             ReasonCode        {snapshot.ReasonCode}
 

@@ -112,7 +112,7 @@ public sealed class InputContextEngine
                     var snapshot = InputContextClassifier.Classify(
                         generation,
                         DateTimeOffset.UtcNow,
-                        InputState.Unknown,
+                        observation.InputState,
                         observation.Evidence);
                     var diagnostic = new InputContextDiagnostic(
                         snapshot,

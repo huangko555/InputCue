@@ -15,6 +15,7 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 窗口中的主要字段：
 
 - `Eligibility`：最终语义分类；
+- `InputState`：输入状态；当前仅把稳定的非 IME 布局标为 `English`，其余为 `Unknown`；
 - `EvidenceGrade`：证据是已确认、已降级还是未知；
 - `ReasonCode`：为什么显示、隐藏或降级；
 - `IsReadOnly`：目标是否只读；
@@ -88,4 +89,5 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 - 发布结果前会再次核对前台窗口、Win32 焦点窗口和 UIA RuntimeId；快速切换过程中拼接出的跨目标证据统一按 `ConflictingEvidence` 隐藏。
 - 只有 UIA `Edit` 和 `Document` 控件可以建立文本编辑资格；单选按钮等非文本控件即使报告可写 Value 或残留 MSAA Caret，也必须判定为 `NoEditableFocus`。
 - Edge、Chrome、系统对话框和快速焦点切换黄金 Trace 已建立，阶段 1 的五个首批场景均已完成独立人工验收。
-- 当前输入状态保持 `Unknown`，微软拼音和 Caps Lock 在阶段 3 接入。
+- 输入状态与 Caret 在同一次观察中采样，并在发布前复核目标线程与 HKL；布局变化时旧结果按 `ConflictingEvidence` 隐藏。
+- 当前只把稳定的非 IME 布局标为 `English`。微软拼音中/英文与 Caps Lock 仍为实验来源，未通过实机兼容矩阵前保持 `Unknown`；技术依据见 `windows-input-state-research.md`。

@@ -14,6 +14,13 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", SetLastError = true)]
     internal static partial uint GetWindowThreadProcessId(nint window, out uint processId);
 
+    [LibraryImport("user32.dll")]
+    internal static partial nint GetKeyboardLayout(uint threadId);
+
+    [LibraryImport("imm32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ImmIsIME(nint keyboardLayout);
+
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetGUIThreadInfo(uint threadId, ref GuiThreadInfo info);
