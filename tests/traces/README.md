@@ -17,6 +17,19 @@
 dotnet run --project src/InputCue.App/InputCue.App.csproj -c Release -- --probe-smoke-test --trace-output tests/traces/wpf-native-basic.json
 ```
 
+## Edge 基线
+
+`edge-basic.json` 来自真实 Edge 前台窗口的分步人工采集，保留四个最小观察：
+
+1. 普通网页输入框光标；
+2. 输入框内部选区；
+3. 未预先点击输入框时的静态正文选区；
+4. 普通单选按钮焦点。
+
+另一次独立采集确认了 `EditableSelection → EditableCaret → NoEditableFocus(Document) → ReadOnlySelection(Document)` 的完整转换。原始采集只保存在 `.local/`，黄金文件不包含输入内容和真实机器字段。
+
+采集同时发现 Edge 的 `RadioButton` 可能报告 `IsReadOnly=false` 和残留 MSAA Caret。该证据不能建立文本编辑资格；回归用例要求它保持 `NoEditableFocus`。
+
 ## Edge / Chrome 人工采集
 
 浏览器自动化可以改变 DOM，但不保证把 Windows 前台焦点交给真实浏览器窗口，因此不能用自动化点击生成兼容性结论。采集时运行：

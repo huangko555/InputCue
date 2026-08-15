@@ -1,0 +1,122 @@
+{
+  "SchemaVersion": 1,
+  "ExportedAt": "1970-01-01T00:00:00+00:00",
+  "Observations": [
+    {
+      "Snapshot": {
+        "Generation": 1,
+        "ObservedAt": "1970-01-01T00:00:00+00:00",
+        "Eligibility": "EditableCaret",
+        "InputState": "Unknown",
+        "Anchor": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+        "AnchorSource": "UiAutomation",
+        "EvidenceGrade": "Confirmed",
+        "ReasonCode": "EditableCaretConfirmed"
+      },
+      "Target": {
+        "ProcessId": 0,
+        "ProcessName": "msedge",
+        "ControlType": "ControlType.Edit",
+        "ClassName": "",
+        "FrameworkId": "Chrome"
+      },
+      "HasEditableFocus": true,
+      "IsReadOnly": false,
+      "HasSelection": false,
+      "UiAutomationCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "UiAutomationCaretMethod": "TextPattern",
+      "TextPattern2Status": "PatternUnavailable",
+      "Win32Caret": null,
+      "MsaaCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "Issue": "None",
+      "DurationMilliseconds": 0
+    },
+    {
+      "Snapshot": {
+        "Generation": 2,
+        "ObservedAt": "1970-01-01T00:00:00.001+00:00",
+        "Eligibility": "EditableSelection",
+        "InputState": "Unknown",
+        "Anchor": null,
+        "AnchorSource": "None",
+        "EvidenceGrade": "Confirmed",
+        "ReasonCode": "EditableSelection"
+      },
+      "Target": {
+        "ProcessId": 0,
+        "ProcessName": "msedge",
+        "ControlType": "ControlType.Edit",
+        "ClassName": "",
+        "FrameworkId": "Chrome"
+      },
+      "HasEditableFocus": true,
+      "IsReadOnly": false,
+      "HasSelection": true,
+      "UiAutomationCaret": null,
+      "UiAutomationCaretMethod": "None",
+      "TextPattern2Status": "PatternUnavailable",
+      "Win32Caret": null,
+      "MsaaCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "Issue": "None",
+      "DurationMilliseconds": 0
+    },
+    {
+      "Snapshot": {
+        "Generation": 3,
+        "ObservedAt": "1970-01-01T00:00:00.002+00:00",
+        "Eligibility": "ReadOnlySelection",
+        "InputState": "Unknown",
+        "Anchor": null,
+        "AnchorSource": "None",
+        "EvidenceGrade": "Confirmed",
+        "ReasonCode": "ReadOnlySelection"
+      },
+      "Target": {
+        "ProcessId": 0,
+        "ProcessName": "msedge",
+        "ControlType": "ControlType.Document",
+        "ClassName": "",
+        "FrameworkId": "Chrome"
+      },
+      "HasEditableFocus": false,
+      "IsReadOnly": true,
+      "HasSelection": true,
+      "UiAutomationCaret": null,
+      "UiAutomationCaretMethod": "None",
+      "TextPattern2Status": "PatternUnavailable",
+      "Win32Caret": null,
+      "MsaaCaret": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+      "Issue": "None",
+      "DurationMilliseconds": 0
+    },
+    {
+      "Snapshot": {
+        "Generation": 4,
+        "ObservedAt": "1970-01-01T00:00:00.003+00:00",
+        "Eligibility": "NoEditableFocus",
+        "InputState": "Unknown",
+        "Anchor": null,
+        "AnchorSource": "None",
+        "EvidenceGrade": "Confirmed",
+        "ReasonCode": "NoEditableFocus"
+      },
+      "Target": {
+        "ProcessId": 0,
+        "ProcessName": "msedge",
+        "ControlType": "ControlType.RadioButton",
+        "ClassName": "",
+        "FrameworkId": "Chrome"
+      },
+      "HasEditableFocus": false,
+      "IsReadOnly": false,
+      "HasSelection": null,
+      "UiAutomationCaret": null,
+      "UiAutomationCaretMethod": "None",
+      "TextPattern2Status": "NotAttempted",
+      "Win32Caret": null,
+      "MsaaCaret": null,
+      "Issue": "None",
+      "DurationMilliseconds": 0
+    }
+  ]
+}

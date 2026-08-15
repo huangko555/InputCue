@@ -37,4 +37,28 @@ public sealed class GoldenTraceTests
             snapshot => Assert.Equal(Eligibility.NoEditableFocus, snapshot.Eligibility));
         Assert.All(replayed.Skip(1), snapshot => Assert.Null(snapshot.Anchor));
     }
+
+    [Fact]
+    public void EdgeTraceDistinguishesTextEditingFromDocumentSelectionAndRadioButton()
+    {
+        var trace = ReadTrace("edge-basic.json");
+
+        var replayed = InputContextTraceReplay.Reclassify(trace);
+
+        Assert.Collection(
+            replayed,
+            snapshot => Assert.Equal(Eligibility.EditableCaret, snapshot.Eligibility),
+            snapshot => Assert.Equal(Eligibility.EditableSelection, snapshot.Eligibility),
+            snapshot => Assert.Equal(Eligibility.ReadOnlySelection, snapshot.Eligibility),
+            snapshot => Assert.Equal(Eligibility.NoEditableFocus, snapshot.Eligibility));
+        Assert.Equal("ControlType.RadioButton", trace.Observations[3].Target.ControlType);
+        Assert.False(trace.Observations[3].HasEditableFocus);
+    }
+
+    private static InputContextTrace ReadTrace(string fileName)
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "traces", fileName);
+        var trace = JsonSerializer.Deserialize<InputContextTrace>(File.ReadAllText(path), JsonOptions);
+        return Assert.IsType<InputContextTrace>(trace);
+    }
 }

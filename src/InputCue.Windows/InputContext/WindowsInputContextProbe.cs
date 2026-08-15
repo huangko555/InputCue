@@ -67,16 +67,30 @@ internal sealed class WindowsInputContextProbe : IDisposable
             var valuePattern = GetPattern<ValuePattern>(focusedElement, ValuePattern.Pattern);
             var isReadOnly = ReadOnlyState(textPattern, valuePattern);
             var textObservation = ObserveText(textPattern);
-            var textPattern2 = _textPattern2CaretProbe.TryGetCaret();
-            var uiAutomationCaret = textPattern2.Caret ?? textObservation.Caret;
-            var uiAutomationCaretMethod = textPattern2.Caret is not null
-                ? UiAutomationCaretMethod.TextPattern2
-                : textObservation.Caret is not null
-                    ? UiAutomationCaretMethod.TextPattern
-                    : UiAutomationCaretMethod.None;
-            var win32Caret = Win32Caret(threadInfo);
-            var msaaCaret = MsaaCaret(focusWindow == 0 ? foregroundWindow : focusWindow);
-            var hasEditableFocus = current.HasKeyboardFocus && current.IsEnabled && isReadOnly is false;
+            var hasEditableFocus = current.HasKeyboardFocus &&
+                current.IsEnabled &&
+                isReadOnly is false &&
+                EditableControlPolicy.SupportsTextEditing(current.ControlType);
+            var shouldProbeCaret = hasEditableFocus && textObservation.HasSelection is not true;
+            var textPattern2 = shouldProbeCaret
+                ? _textPattern2CaretProbe.TryGetCaret()
+                : new NativeTextPattern2CaretProbe.NativeCaretResult(
+                    null,
+                    TextPattern2Status.NotAttempted);
+            var uiAutomationCaret = shouldProbeCaret
+                ? textPattern2.Caret ?? textObservation.Caret
+                : null;
+            var uiAutomationCaretMethod = shouldProbeCaret
+                ? textPattern2.Caret is not null
+                    ? UiAutomationCaretMethod.TextPattern2
+                    : textObservation.Caret is not null
+                        ? UiAutomationCaretMethod.TextPattern
+                        : UiAutomationCaretMethod.None
+                : UiAutomationCaretMethod.None;
+            var win32Caret = shouldProbeCaret ? Win32Caret(threadInfo) : null;
+            var msaaCaret = shouldProbeCaret
+                ? MsaaCaret(focusWindow == 0 ? foregroundWindow : focusWindow)
+                : null;
 
             var target = new TargetDescriptor(
                 focusedProcessId,
