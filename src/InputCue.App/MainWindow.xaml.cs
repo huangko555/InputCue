@@ -20,7 +20,7 @@ public partial class MainWindow : Window, IDisposable
     };
 
     private readonly InputContextEngine _engine = new();
-    private readonly List<InputContextDiagnostic> _history = [];
+    private readonly InputContextTraceBuffer _history = new(HistoryCapacity);
     private CancellationTokenSource? _watchCancellation;
     private bool _disposed;
 
@@ -60,7 +60,7 @@ public partial class MainWindow : Window, IDisposable
 
     private async void OnExportClick(object sender, RoutedEventArgs e)
     {
-        if (_history.Count == 0)
+        if (_history.Observations.Count == 0)
         {
             StatusText.Text = "没有可导出的外部应用观察。";
             return;
@@ -82,10 +82,10 @@ public partial class MainWindow : Window, IDisposable
 
         try
         {
-            var trace = InputContextTrace.Create(_history);
+            var trace = InputContextTrace.Create(_history.Observations);
             var json = JsonSerializer.Serialize(trace, JsonOptions);
             await File.WriteAllTextAsync(dialog.FileName, json, Encoding.UTF8);
-            StatusText.Text = $"已导出 {_history.Count} 条脱敏观察。";
+            StatusText.Text = $"已导出 {_history.Observations.Count} 条脱敏观察。";
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -143,10 +143,6 @@ public partial class MainWindow : Window, IDisposable
     private void ShowDiagnostic(InputContextDiagnostic diagnostic)
     {
         _history.Add(diagnostic);
-        if (_history.Count > HistoryCapacity)
-        {
-            _history.RemoveAt(0);
-        }
 
         StatusText.Text =
             $"正在监听 · 最近观察 {diagnostic.Snapshot.ObservedAt.ToLocalTime():HH:mm:ss.fff} · " +
@@ -169,6 +165,9 @@ public partial class MainWindow : Window, IDisposable
             HasIMEContext     {ValueOrUnknown(inputStateEvidence.HasImeContext)}
             IMEOpen           {ValueOrUnknown(inputStateEvidence.ImeOpen)}
             ConversionMode    {FormatHex(inputStateEvidence.ConversionMode)}
+            HasDefaultIMEWnd  {ValueOrUnknown(inputStateEvidence.HasDefaultImeWindow)}
+            WindowOpenStatus  {FormatHex(inputStateEvidence.ImeWindowOpenStatus)}
+            WindowConvMode    {FormatHex(inputStateEvidence.ImeWindowConversionMode)}
             EvidenceGrade     {snapshot.EvidenceGrade}
             ReasonCode        {snapshot.ReasonCode}
 

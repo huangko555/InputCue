@@ -30,7 +30,8 @@ public sealed class WindowsInputStateProbeTests
                 true,
                 HasImeContext: true,
                 ImeOpen: true,
-                ConversionMode: 0x0001));
+                ConversionMode: 0x0001,
+                DefaultImeWindow: new DefaultImeWindowFacts(true, 1, 0x0401)));
         var probe = new WindowsInputStateProbe(reader);
 
         var observation = probe.Observe(42);
@@ -41,6 +42,9 @@ public sealed class WindowsInputStateProbeTests
         Assert.True(observation.Evidence.HasImeContext);
         Assert.True(observation.Evidence.ImeOpen);
         Assert.Equal((uint)0x0001, observation.Evidence.ConversionMode);
+        Assert.True(observation.Evidence.HasDefaultImeWindow);
+        Assert.Equal((uint)1, observation.Evidence.ImeWindowOpenStatus);
+        Assert.Equal((uint)0x0401, observation.Evidence.ImeWindowConversionMode);
     }
 
     [Theory]

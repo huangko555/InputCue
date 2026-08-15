@@ -5,9 +5,15 @@ public sealed record InputStateEvidence(
     bool? IsIme,
     bool? HasImeContext,
     bool? ImeOpen,
-    uint? ConversionMode)
+    uint? ConversionMode,
+    bool? HasDefaultImeWindow = null,
+    uint? ImeWindowOpenStatus = null,
+    uint? ImeWindowConversionMode = null)
 {
     public static readonly InputStateEvidence Unavailable = new(
+        null,
+        null,
+        null,
         null,
         null,
         null,

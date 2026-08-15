@@ -18,6 +18,7 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 - `InputState`：输入状态；当前仅把稳定的非 IME 布局标为 `English`，其余为 `Unknown`；
 - `InputLanguage`：前台输入线程 HKL 的语言 ID，仅用于兼容诊断；
 - `IsIME / HasIMEContext / IMEOpen / ConversionMode`：IMM32 实验事实；它们不会在画像验证前直接映射成中文或英文；
+- `HasDefaultIMEWnd / WindowOpenStatus / WindowConvMode`：默认 IME 窗口消息路径的实验事实；成功返回的 `0` 与查询失败严格区分；
 - `EvidenceGrade`：证据是已确认、已降级还是未知；
 - `ReasonCode`：为什么显示、隐藏或降级；
 - `IsReadOnly`：目标是否只读；
@@ -93,4 +94,6 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 - Edge、Chrome、系统对话框和快速焦点切换黄金 Trace 已建立，阶段 1 的五个首批场景均已完成独立人工验收。
 - 输入状态与 Caret 在同一次观察中采样，并在发布前复核目标线程与 HKL；布局变化时旧结果按 `ConflictingEvidence` 隐藏。
 - IMM32 模式也会前后复核；采样期间模式变化时整条观察按 `ConflictingEvidence` 丢弃。
+- 默认 IME 窗口查询使用 25ms 短超时，并启用挂起和窗口退出保护；消息失败不会伪装成英文状态。
+- 诊断历史会合并连续且语义完全相同的观察，只保留最新时间和耗时；Generation、输入状态或任一 IME 证据变化都会保留为独立记录。
 - 当前只把稳定的非 IME 布局标为 `English`。微软拼音中/英文与 Caps Lock 仍为实验来源，未通过实机兼容矩阵前保持 `Unknown`；技术依据见 `windows-input-state-research.md`。

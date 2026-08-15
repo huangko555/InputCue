@@ -130,6 +130,12 @@ foreground HWND
 - Caps Lock 以单独健康度报告，未证明跨前台线程一致前不作为“始终准确”的产品承诺；
 - 任意失败只能让提示消失，不能造成误显示，更不能改变用户输入法。
 
+## 7. 参考实现边界
+
+InputTip 与 ImTip/aardio 仅用于发现候选 API、兼容场景和失败案例。InputCue 的实现依据 Windows API 契约、自有数据模型和回归测试独立完成，不复制或翻译其源码、状态机和配置结构。
+
+阶段 3 已将默认 IME 窗口消息路径实现为独立的实验探针：每条消息使用 25ms 短超时，成功返回的零值与查询失败分别表示；结果只进入诊断证据，在兼容矩阵验证前不映射为中文或英文。该路径不改变前述“桌面公开文档未承诺通用跨进程兼容性”的结论。
+
 ## 官方资料索引
 
 - [GetKeyState](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getkeystate)、[GetKeyboardState](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getkeyboardstate)、[GetAsyncKeyState](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getasynckeystate)、[AttachThreadInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-attachthreadinput)

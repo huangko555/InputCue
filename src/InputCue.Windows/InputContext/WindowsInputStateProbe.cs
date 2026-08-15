@@ -62,7 +62,10 @@ internal sealed class WindowsInputStateProbe
             facts.IsIme,
             facts.IsIme ? facts.HasImeContext : null,
             facts.ImeOpen,
-            facts.ConversionMode);
+            facts.ConversionMode,
+            facts.DefaultImeWindow.HasDefaultImeWindow,
+            facts.DefaultImeWindow.OpenStatus,
+            facts.DefaultImeWindow.ConversionMode);
     }
 }
 
@@ -87,7 +90,8 @@ internal readonly record struct InputStateFacts(
     bool IsIme,
     bool? HasImeContext = null,
     bool? ImeOpen = null,
-    uint? ConversionMode = null);
+    uint? ConversionMode = null,
+    DefaultImeWindowFacts DefaultImeWindow = default);
 
 internal interface IInputStateFactsReader
 {
@@ -97,9 +101,17 @@ internal interface IInputStateFactsReader
 internal sealed class WindowsInputStateFactsReader : IInputStateFactsReader
 {
     internal static readonly WindowsInputStateFactsReader Instance = new();
+    private readonly DefaultImeWindowProbe _defaultImeWindowProbe;
 
     private WindowsInputStateFactsReader()
+        : this(new DefaultImeWindowProbe())
     {
+    }
+
+    internal WindowsInputStateFactsReader(DefaultImeWindowProbe defaultImeWindowProbe)
+    {
+        ArgumentNullException.ThrowIfNull(defaultImeWindowProbe);
+        _defaultImeWindowProbe = defaultImeWindowProbe;
     }
 
     public InputStateFacts Read(nint targetWindow)
@@ -127,6 +139,7 @@ internal sealed class WindowsInputStateFactsReader : IInputStateFactsReader
             return new InputStateFacts(threadId, keyboardLayout, false);
         }
 
+        var defaultImeWindow = _defaultImeWindowProbe.Observe(targetWindow);
         var inputContext = NativeMethods.ImmGetContext(targetWindow);
         if (inputContext == 0)
         {
@@ -134,7 +147,8 @@ internal sealed class WindowsInputStateFactsReader : IInputStateFactsReader
                 threadId,
                 keyboardLayout,
                 true,
-                HasImeContext: false);
+                HasImeContext: false,
+                DefaultImeWindow: defaultImeWindow);
         }
 
         try
@@ -150,7 +164,8 @@ internal sealed class WindowsInputStateFactsReader : IInputStateFactsReader
                 true,
                 HasImeContext: true,
                 ImeOpen: imeOpen,
-                ConversionMode: hasConversionStatus ? conversionMode : null);
+                ConversionMode: hasConversionStatus ? conversionMode : null,
+                DefaultImeWindow: defaultImeWindow);
         }
         finally
         {

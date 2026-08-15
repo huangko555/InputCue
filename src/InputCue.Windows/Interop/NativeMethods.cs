@@ -5,6 +5,10 @@ namespace InputCue.Windows.Interop;
 internal static partial class NativeMethods
 {
     internal const uint ObjectIdCaret = 0xFFFFFFF8;
+    internal const uint SendMessageTimeoutBlock = 0x0001;
+    internal const uint SendMessageTimeoutAbortIfHung = 0x0002;
+    internal const uint SendMessageTimeoutErrorOnExit = 0x0020;
+    internal const uint WmImeControl = 0x0283;
 
     internal static readonly Guid IAccessibleId = new("618736E0-3C3D-11CF-810C-00AA00389B71");
 
@@ -38,6 +42,19 @@ internal static partial class NativeMethods
         nint inputContext,
         out uint conversionMode,
         out uint sentenceMode);
+
+    [LibraryImport("imm32.dll")]
+    internal static partial nint ImmGetDefaultIMEWnd(nint window);
+
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true)]
+    internal static partial nint SendMessageTimeoutW(
+        nint window,
+        uint message,
+        nuint wParam,
+        nint lParam,
+        uint flags,
+        uint timeoutMilliseconds,
+        out nuint result);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
