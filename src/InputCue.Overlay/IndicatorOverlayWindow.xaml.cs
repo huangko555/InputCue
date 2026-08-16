@@ -25,6 +25,7 @@ public partial class IndicatorOverlayWindow : Window
     private static readonly SolidColorBrush CapsLockBrush = FrozenBrush("#2F9E68");
 
     private nint _windowHandle;
+    private long? _positionedGeneration;
 
     internal IndicatorOverlayWindow()
     {
@@ -36,6 +37,7 @@ public partial class IndicatorOverlayWindow : Window
         if (!state.IsVisible || state.Anchor is not { IsUsable: true } anchor)
         {
             Hide();
+            _positionedGeneration = null;
             return;
         }
 
@@ -49,11 +51,19 @@ public partial class IndicatorOverlayWindow : Window
         };
         Opacity = state.Opacity;
 
-        var isFirstFrame = !IsVisible;
-        if (isFirstFrame)
+        var shouldReposition = OverlayRenderPolicy.ShouldReposition(
+            IsVisible,
+            _positionedGeneration,
+            state.Generation);
+        if (shouldReposition)
         {
-            Show();
+            if (!IsVisible)
+            {
+                Show();
+            }
+
             Position(anchor);
+            _positionedGeneration = state.Generation;
         }
     }
 

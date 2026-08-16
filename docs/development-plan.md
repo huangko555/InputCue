@@ -192,7 +192,7 @@
 - 当前进度：资源管理器地址栏已完成真实前台采集；`explorer + XAML + TextBox` 可确认 `HasEditableFocus=true`，但选区折叠后 UIA TextPattern2、托管 TextPattern、Win32 Caret 和 MSAA Caret 均无可用坐标，最终为 `PositionUnknown`；
 - V1 暂缓，与 WPS 文档和 Windows Terminal 一起评估统一的“可编辑已确认但 Caret 不可得”降级策略；
 - 不使用鼠标坐标，也不直接用地址栏外框冒充精确插入光标；若后续采用外框锚点，必须作为明确的应用画像降级并单独验证提示干扰；
-- 开始菜单搜索框不属于此缺口：`SearchHost + XAML + RichEditBox` 已能取得真实 UIA Caret，普通开始菜单区域保持隐藏。
+- 开始菜单搜索框的探针层已能取得 `SearchHost + XAML + RichEditBox` 的真实 UIA Caret，但主提示层实机显示仍未完成闭环验证；与资源管理器地址栏一起单独延期研究，普通开始菜单区域保持隐藏。
 
 ### 3A 验收门槛
 
