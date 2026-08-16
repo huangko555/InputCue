@@ -37,6 +37,14 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 
 期望：`EditableCaret`。如果可编辑已确认但所有 Caret 来源都不可用，可以暂时是 `PositionUnknown`，但必须记录下来，不能用鼠标位置伪装成功。
 
+### 1.1 可编辑输入框全选
+
+1. 在地址栏或普通输入框中按 `Ctrl+A`；
+2. 切换一次中英文输入状态；
+3. 返回 InputCue。
+
+期望：保持 `EditableSelection`。有可信 UIA、Win32 或 MSAA Caret 时 Anchor 非空并允许提示；没有可信锚点时 Anchor 为空并保持隐藏。
+
 ### 2. 静态网页拖选
 
 1. 在同一网页拖选一段只读正文；

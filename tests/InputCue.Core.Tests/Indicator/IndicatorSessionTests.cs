@@ -36,7 +36,6 @@ public sealed class IndicatorSessionTests
     }
 
     [Theory]
-    [InlineData(Eligibility.EditableSelection, IndicatorReasonCode.ContextIneligible)]
     [InlineData(Eligibility.ReadOnlySelection, IndicatorReasonCode.ContextIneligible)]
     [InlineData(Eligibility.NoEditableFocus, IndicatorReasonCode.ContextIneligible)]
     [InlineData(Eligibility.Unknown, IndicatorReasonCode.ContextIneligible)]
@@ -54,6 +53,43 @@ public sealed class IndicatorSessionTests
         Assert.Equal(InputState.Unknown, state.InputState);
         Assert.Null(state.Anchor);
         Assert.Equal(expectedReason, state.ReasonCode);
+    }
+
+    [Fact]
+    public void EditableSelectionWithKnownInputStateShowsAtSafeAnchor()
+    {
+        var session = new IndicatorSession(Transient);
+
+        var state = session.Observe(Snapshot(
+            1,
+            Start,
+            Eligibility.EditableSelection));
+
+        Assert.Equal(IndicatorPhase.Visible, state.Phase);
+        Assert.Equal(Caret, state.Anchor);
+        Assert.Equal(IndicatorReasonCode.ContextEstablished, state.ReasonCode);
+    }
+
+    [Fact]
+    public void RepeatedEditableSelectionDoesNotExtendDisplayDuration()
+    {
+        var movedCaret = new ScreenRect(130, 120, 2, 20);
+        var session = new IndicatorSession(Transient);
+        _ = session.Observe(Snapshot(
+            1,
+            Start,
+            Eligibility.EditableSelection));
+
+        _ = session.Observe(Snapshot(
+            1,
+            Start.AddMilliseconds(900),
+            Eligibility.EditableSelection,
+            anchor: movedCaret));
+        var state = session.Advance(Start.AddMilliseconds(1050));
+
+        Assert.Equal(IndicatorPhase.Fading, state.Phase);
+        Assert.Equal(0.75, state.Opacity, 3);
+        Assert.Equal(movedCaret, state.Anchor);
     }
 
     [Fact]
@@ -295,14 +331,17 @@ public sealed class IndicatorSessionTests
         DateTimeOffset observedAt,
         Eligibility eligibility = Eligibility.EditableCaret,
         InputState inputState = InputState.English,
-        bool includeAnchor = true) =>
+        bool includeAnchor = true,
+        ScreenRect? anchor = null) =>
         new(
             generation,
             observedAt,
             eligibility,
             inputState,
-            includeAnchor ? Caret : null,
+            includeAnchor ? anchor ?? Caret : null,
             AnchorSource.UiAutomation,
             EvidenceGrade.Confirmed,
-            ReasonCode.EditableCaretConfirmed);
+            eligibility is Eligibility.EditableSelection
+                ? ReasonCode.EditableSelection
+                : ReasonCode.EditableCaretConfirmed);
 }

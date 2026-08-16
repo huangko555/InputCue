@@ -37,9 +37,9 @@
         "ObservedAt": "1970-01-01T00:00:00.001+00:00",
         "Eligibility": "EditableSelection",
         "InputState": "Unknown",
-        "Anchor": null,
-        "AnchorSource": "None",
-        "EvidenceGrade": "Confirmed",
+        "Anchor": { "X": 100, "Y": 120, "Width": 2, "Height": 20, "IsUsable": true },
+        "AnchorSource": "Msaa",
+        "EvidenceGrade": "Degraded",
         "ReasonCode": "EditableSelection"
       },
       "Target": {

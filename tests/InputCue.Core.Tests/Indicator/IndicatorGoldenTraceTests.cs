@@ -15,7 +15,7 @@ public sealed class IndicatorGoldenTraceTests
 
     [Theory]
     [InlineData("wpf-native-basic.json", "VHHH")]
-    [InlineData("edge-basic.json", "VHHH")]
+    [InlineData("edge-basic.json", "VVHH")]
     [InlineData("chrome-basic.json", "VHHH")]
     [InlineData("system-dialog-basic.json", "VVHH")]
     [InlineData("rapid-focus-switch-basic.json", "VVVVVV")]

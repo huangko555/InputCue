@@ -22,7 +22,7 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj -c Release -- --probe-
 `edge-basic.json` 来自真实 Edge 前台窗口的分步人工采集，保留四个最小观察：
 
 1. 普通网页输入框光标；
-2. 输入框内部选区；
+2. 输入框内部选区（保留有效 MSAA Caret，可用于提示）；
 3. 未预先点击输入框时的静态正文选区；
 4. 普通单选按钮焦点。
 

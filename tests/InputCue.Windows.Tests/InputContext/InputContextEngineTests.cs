@@ -127,7 +127,6 @@ public sealed class InputContextEngineTests
                 identity,
                 identity,
                 identity,
-                0,
                 new TargetDescriptor(identity, $"target-{identity}", "ControlType.Edit", "Edit", "Test"),
                 _inputState,
                 _inputStateEvidence,

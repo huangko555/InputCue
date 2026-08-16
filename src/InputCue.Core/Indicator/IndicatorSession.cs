@@ -54,7 +54,7 @@ public sealed class IndicatorSession
         var shouldReplay = isNewGeneration ||
             previousContext is null ||
             previousContext.InputState != snapshot.InputState ||
-            previousContext.Eligibility != Eligibility.EditableCaret;
+            !IsDisplayEligible(previousContext.Eligibility);
 
         if (shouldReplay)
         {
@@ -109,7 +109,7 @@ public sealed class IndicatorSession
 
     private static IndicatorReasonCode? GetHiddenReason(InputContextSnapshot snapshot)
     {
-        if (snapshot.Eligibility is not Eligibility.EditableCaret)
+        if (!IsDisplayEligible(snapshot.Eligibility))
         {
             return snapshot.Eligibility is Eligibility.PositionUnknown
                 ? IndicatorReasonCode.PositionUnavailable
@@ -128,6 +128,9 @@ public sealed class IndicatorSession
 
         return null;
     }
+
+    private static bool IsDisplayEligible(Eligibility eligibility) =>
+        eligibility is Eligibility.EditableCaret or Eligibility.EditableSelection;
 
     private void Show(
         InputContextSnapshot snapshot,

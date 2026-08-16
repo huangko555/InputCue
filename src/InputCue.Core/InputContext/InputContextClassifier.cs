@@ -18,22 +18,30 @@ public static class InputContextClassifier
 
         if (evidence.HasSelection is true)
         {
-            var eligibility = evidence.HasEditableFocus && evidence.IsReadOnly is false
-                ? Eligibility.EditableSelection
-                : Eligibility.ReadOnlySelection;
-            var reason = eligibility is Eligibility.EditableSelection
-                ? ReasonCode.EditableSelection
-                : ReasonCode.ReadOnlySelection;
+            if (!evidence.HasEditableFocus || evidence.IsReadOnly is not false)
+            {
+                return new InputContextSnapshot(
+                    generation,
+                    observedAt,
+                    Eligibility.ReadOnlySelection,
+                    inputState,
+                    null,
+                    AnchorSource.None,
+                    EvidenceGrade.Confirmed,
+                    ReasonCode.ReadOnlySelection);
+            }
+
+            var (selectionAnchor, selectionSource, selectionGrade) = SelectAnchor(evidence);
 
             return new InputContextSnapshot(
                 generation,
                 observedAt,
-                eligibility,
+                Eligibility.EditableSelection,
                 inputState,
-                null,
-                AnchorSource.None,
-                EvidenceGrade.Confirmed,
-                reason);
+                selectionAnchor,
+                selectionSource,
+                selectionAnchor is null ? EvidenceGrade.Confirmed : selectionGrade,
+                ReasonCode.EditableSelection);
         }
 
         if (!evidence.HasEditableFocus || evidence.IsReadOnly is not false)

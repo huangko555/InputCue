@@ -20,14 +20,27 @@ public sealed class InputContextClassifierTests
     }
 
     [Fact]
-    public void ClassifyHidesEditableSelection()
+    public void ClassifyAnchorsEditableSelection()
     {
         var evidence = Evidence(editable: true, readOnly: false, selection: true, uiAutomationCaret: Caret);
 
         var result = InputContextClassifier.Classify(1, ObservedAt, InputState.Unknown, evidence);
 
         Assert.Equal(Eligibility.EditableSelection, result.Eligibility);
+        Assert.Equal(Caret, result.Anchor);
+        Assert.Equal(AnchorSource.UiAutomation, result.AnchorSource);
+    }
+
+    [Fact]
+    public void ClassifyKeepsEditableSelectionWithoutAnUnsafeAnchor()
+    {
+        var evidence = Evidence(editable: true, readOnly: false, selection: true);
+
+        var result = InputContextClassifier.Classify(1, ObservedAt, InputState.Unknown, evidence);
+
+        Assert.Equal(Eligibility.EditableSelection, result.Eligibility);
         Assert.Null(result.Anchor);
+        Assert.Equal(AnchorSource.None, result.AnchorSource);
     }
 
     [Fact]

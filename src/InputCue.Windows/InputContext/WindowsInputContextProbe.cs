@@ -67,28 +67,35 @@ internal sealed class WindowsInputContextProbe : IDisposable
             var textPattern = GetPattern<TextPattern>(focusedElement, TextPattern.Pattern);
             var valuePattern = GetPattern<ValuePattern>(focusedElement, ValuePattern.Pattern);
             var isReadOnly = ReadOnlyState(textPattern, valuePattern);
-            var textObservation = ObserveText(textPattern);
             var hasEditableFocus = current.HasKeyboardFocus &&
                 current.IsEnabled &&
                 isReadOnly is false &&
                 EditableControlPolicy.SupportsTextEditing(
                     current.ControlType,
                     valuePattern is not null);
-            var shouldProbeCaret = hasEditableFocus && textObservation.HasSelection is not true;
+            var textObservation = ObserveText(textPattern, includeSelectionCaret: hasEditableFocus);
+            var shouldProbeCaret = hasEditableFocus;
             var textPattern2 = shouldProbeCaret
                 ? _textPattern2CaretProbe.TryGetCaret()
                 : new NativeTextPattern2CaretProbe.NativeCaretResult(
                     null,
                     TextPattern2Status.NotAttempted);
-            var uiAutomationCaret = shouldProbeCaret
-                ? textPattern2.Caret ?? textObservation.Caret
-                : null;
-            var uiAutomationCaretMethod = shouldProbeCaret
-                ? textPattern2.Caret is not null
-                    ? UiAutomationCaretMethod.TextPattern2
-                    : textObservation.Caret is not null
-                        ? UiAutomationCaretMethod.TextPattern
-                        : UiAutomationCaretMethod.None
+            var requiresCaretShape = textObservation.HasSelection is true;
+            ScreenRect? textPattern2Caret = shouldProbeCaret &&
+                textPattern2.Caret is { } nativeCaret &&
+                (!requiresCaretShape || IsCaretLike(nativeCaret))
+                    ? nativeCaret
+                    : null;
+            ScreenRect? textPatternCaret = shouldProbeCaret &&
+                textObservation.Caret is { } managedCaret &&
+                (!requiresCaretShape || IsCaretLike(managedCaret))
+                    ? managedCaret
+                    : null;
+            var uiAutomationCaret = textPattern2Caret ?? textPatternCaret;
+            var uiAutomationCaretMethod = textPattern2Caret is not null
+                ? UiAutomationCaretMethod.TextPattern2
+                : textPatternCaret is not null
+                    ? UiAutomationCaretMethod.TextPattern
                 : UiAutomationCaretMethod.None;
             var win32Caret = shouldProbeCaret ? Win32Caret(threadInfo) : null;
             var msaaCaret = shouldProbeCaret
@@ -97,9 +104,7 @@ internal sealed class WindowsInputContextProbe : IDisposable
             var hasCaret = uiAutomationCaret is { IsUsable: true } ||
                 win32Caret is { IsUsable: true } ||
                 msaaCaret is { IsUsable: true };
-            var inputState = hasEditableFocus &&
-                textObservation.HasSelection is not true &&
-                hasCaret
+            var inputState = hasEditableFocus && hasCaret
                 ? _inputStateProbe.Observe(focusWindow == 0 ? foregroundWindow : focusWindow)
                 : InputStateObservation.Unknown;
 
@@ -147,7 +152,6 @@ internal sealed class WindowsInputContextProbe : IDisposable
                 foregroundWindow,
                 focusWindow,
                 automationIdentity,
-                textObservation.SelectionIdentity,
                 target,
                 inputState.State,
                 inputState.Evidence,
@@ -207,16 +211,17 @@ internal sealed class WindowsInputContextProbe : IDisposable
         return value is bool isReadOnly ? isReadOnly : null;
     }
 
-    private static TextObservation ObserveText(TextPattern? textPattern)
+    private static TextObservation ObserveText(
+        TextPattern? textPattern,
+        bool includeSelectionCaret)
     {
         if (textPattern is null)
         {
-            return new TextObservation(null, null, 0);
+            return new TextObservation(null, null);
         }
 
         var hasSelection = false;
         ScreenRect? caret = null;
-        var selectionHash = new HashCode();
         foreach (var range in textPattern.GetSelection())
         {
             var comparison = range.CompareEndpoints(
@@ -226,12 +231,9 @@ internal sealed class WindowsInputContextProbe : IDisposable
             if (comparison != 0)
             {
                 hasSelection = true;
-                foreach (var rectangle in range.GetBoundingRectangles())
+                if (includeSelectionCaret)
                 {
-                    selectionHash.Add(rectangle.X);
-                    selectionHash.Add(rectangle.Y);
-                    selectionHash.Add(rectangle.Width);
-                    selectionHash.Add(rectangle.Height);
+                    caret ??= SelectionEndCaret(range);
                 }
             }
             else if (caret is null)
@@ -240,8 +242,35 @@ internal sealed class WindowsInputContextProbe : IDisposable
             }
         }
 
-        return new TextObservation(hasSelection, caret, selectionHash.ToHashCode());
+        return new TextObservation(hasSelection, caret);
     }
+
+    private static ScreenRect? SelectionEndCaret(TextPatternRange range)
+    {
+        try
+        {
+            var collapsed = range.Clone();
+            collapsed.MoveEndpointByRange(
+                TextPatternRangeEndpoint.Start,
+                collapsed,
+                TextPatternRangeEndpoint.End);
+            var caret = FirstRectangle(collapsed.GetBoundingRectangles());
+            return caret is { } value && IsCaretLike(value) ? value : null;
+        }
+        catch (Exception exception) when (IsExpectedProbeFailure(exception))
+        {
+            return null;
+        }
+        catch (COMException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsCaretLike(ScreenRect rectangle) =>
+        rectangle.IsUsable &&
+        rectangle.Width <= Math.Max(8, rectangle.Height / 2) &&
+        rectangle.Height <= 256;
 
     private static int AutomationIdentity(AutomationElement element)
     {
@@ -408,7 +437,6 @@ internal sealed class WindowsInputContextProbe : IDisposable
             foregroundWindow,
             focusWindow,
             0,
-            0,
             target,
             InputState.Unknown,
             InputStateEvidence.Unavailable,
@@ -418,8 +446,5 @@ internal sealed class WindowsInputContextProbe : IDisposable
             Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
     }
 
-    private sealed record TextObservation(
-        bool? HasSelection,
-        ScreenRect? Caret,
-        int SelectionIdentity);
+    private sealed record TextObservation(bool? HasSelection, ScreenRect? Caret);
 }

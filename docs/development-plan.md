@@ -17,7 +17,7 @@
 - Chrome Google 搜索框的可写 `ComboBox` 已通过真实前台 Trace 验证，可稳定区分可编辑 Caret 与网页正文；
 - 静态网页正文和非编辑控件不会因为鼠标悬停被当成可编辑光标；
 - 真实 Trace 暴露的 UIA 整控件矩形会在独立 Win32/MSAA Caret 位于其中时安全回退；
-- 92 个自动化测试、Release 构建和格式检查通过。
+- 95 个自动化测试、Release 构建和格式检查通过。
 
 已确认但尚未解决：
 
@@ -146,12 +146,13 @@
 
 ### 3A.2 可编辑选区
 
+- 当前进度：分类、显示会话和 generation 去抖已实现；原生 WPF 无安全锚点时保持隐藏，已有 Edge Trace 可通过 MSAA Caret 显示；地址栏真实前台验证待完成；
 - 区分 `EditableSelection` 与 `ReadOnlySelection`；
 - 产品规则：可编辑输入框内即使文字被全选，用户仍然可以直接输入，因此允许提示；
 - 只在焦点进入该输入框、输入法状态变化或选区首次建立时触发提示，不因拖动选区的每个中间事件反复闪烁；
 - 优先尝试 `TextPattern2.GetCaretRange` 获取活动插入点；
 - 若活动插入点不可用，才尝试当前可编辑选区的安全边界作为锚点；
-- 没有安全锚点时保持 `PositionUnknown`/隐藏；
+- 没有安全锚点时保留 `EditableSelection` 诊断和空 Anchor，显示层按 `PositionUnavailable` 隐藏；
 - 网页正文拖选仍必须保持隐藏。
 
 验收场景至少包含：
