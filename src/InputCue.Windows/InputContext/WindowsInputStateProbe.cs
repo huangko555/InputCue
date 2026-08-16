@@ -5,6 +5,9 @@ namespace InputCue.Windows.InputContext;
 
 internal sealed class WindowsInputStateProbe
 {
+    private const ushort ChinesePrimaryLanguage = 0x0004;
+    private const uint ImeConversionNative = 0x0001;
+
     private readonly IInputStateFactsReader _factsReader;
 
     internal WindowsInputStateProbe()
@@ -21,11 +24,7 @@ internal sealed class WindowsInputStateProbe
     internal InputStateObservation Observe(nint targetWindow)
     {
         var facts = _factsReader.Read(targetWindow);
-        // HKL identifies an IME, not its current conversion mode. Until a concrete
-        // IME profile is validated, treating it as Chinese would create false cues.
-        var state = facts.ThreadId == 0 || facts.KeyboardLayout == 0 || facts.IsIme
-            ? InputState.Unknown
-            : InputState.English;
+        var state = Classify(facts);
 
         return new InputStateObservation(
             state,
@@ -33,6 +32,63 @@ internal sealed class WindowsInputStateProbe
             facts.ThreadId,
             facts.KeyboardLayout,
             Evidence(facts));
+    }
+
+    private static InputState Classify(InputStateFacts facts)
+    {
+        if (facts.ThreadId == 0 || facts.KeyboardLayout == 0)
+        {
+            return InputState.Unknown;
+        }
+
+        if (!facts.IsIme)
+        {
+            return InputState.English;
+        }
+
+        var languageId = (ushort)(facts.KeyboardLayout.ToInt64() & 0xFFFF);
+        if ((languageId & 0x03FF) != ChinesePrimaryLanguage)
+        {
+            return InputState.Unknown;
+        }
+
+        var directOpen = facts.ImeOpen;
+        bool? windowOpen = facts.DefaultImeWindow.OpenStatus is { } status
+            ? status != 0
+            : null;
+        if (directOpen is not null && windowOpen is not null && directOpen != windowOpen)
+        {
+            return InputState.Unknown;
+        }
+
+        var open = directOpen ?? windowOpen;
+        if (open is null)
+        {
+            return InputState.Unknown;
+        }
+
+        if (!open.Value)
+        {
+            return InputState.English;
+        }
+
+        var directNative = facts.ConversionMode is { } directMode
+            ? (directMode & ImeConversionNative) != 0
+            : (bool?)null;
+        var windowNative = facts.DefaultImeWindow.ConversionMode is { } windowMode
+            ? (windowMode & ImeConversionNative) != 0
+            : (bool?)null;
+        if (directNative is not null && windowNative is not null && directNative != windowNative)
+        {
+            return InputState.Unknown;
+        }
+
+        var native = directNative ?? windowNative;
+        return native is null
+            ? InputState.Unknown
+            : native.Value
+                ? InputState.Chinese
+                : InputState.English;
     }
 
     internal bool IsCurrent(InputStateObservation observation)

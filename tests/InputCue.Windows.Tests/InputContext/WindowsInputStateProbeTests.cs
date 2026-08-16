@@ -21,7 +21,7 @@ public sealed class WindowsInputStateProbeTests
     }
 
     [Fact]
-    public void ObserveKeepsImeLayoutsUnknownUntilAProfileIsVerified()
+    public void ObserveClassifiesChineseImeFromConsistentNativeModeEvidence()
     {
         var reader = new StubInputStateFactsReader(
             new InputStateFacts(
@@ -36,7 +36,7 @@ public sealed class WindowsInputStateProbeTests
 
         var observation = probe.Observe(42);
 
-        Assert.Equal(InputState.Unknown, observation.State);
+        Assert.Equal(InputState.Chinese, observation.State);
         Assert.Equal((ushort)0x0804, observation.Evidence.LanguageId);
         Assert.True(observation.Evidence.IsIme);
         Assert.True(observation.Evidence.HasImeContext);
@@ -45,6 +45,93 @@ public sealed class WindowsInputStateProbeTests
         Assert.True(observation.Evidence.HasDefaultImeWindow);
         Assert.Equal((uint)1, observation.Evidence.ImeWindowOpenStatus);
         Assert.Equal((uint)0x0401, observation.Evidence.ImeWindowConversionMode);
+    }
+
+    [Fact]
+    public void ObserveClassifiesChineseImeAsEnglishWhenNativeModeIsOff()
+    {
+        var reader = new StubInputStateFactsReader(
+            new InputStateFacts(
+                7,
+                0x0804,
+                true,
+                HasImeContext: false,
+                DefaultImeWindow: new DefaultImeWindowFacts(true, 1, 0)));
+        var probe = new WindowsInputStateProbe(reader);
+
+        var observation = probe.Observe(42);
+
+        Assert.Equal(InputState.English, observation.State);
+    }
+
+    [Fact]
+    public void ObserveKeepsUnsupportedImeLayoutsUnknown()
+    {
+        var reader = new StubInputStateFactsReader(
+            new InputStateFacts(
+                7,
+                0x0411,
+                true,
+                HasImeContext: false,
+                DefaultImeWindow: new DefaultImeWindowFacts(true, 1, 1)));
+        var probe = new WindowsInputStateProbe(reader);
+
+        var observation = probe.Observe(42);
+
+        Assert.Equal(InputState.Unknown, observation.State);
+    }
+
+    [Fact]
+    public void ObserveKeepsConflictingImeSourcesUnknown()
+    {
+        var reader = new StubInputStateFactsReader(
+            new InputStateFacts(
+                7,
+                0x0804,
+                true,
+                HasImeContext: true,
+                ImeOpen: true,
+                ConversionMode: 0,
+                DefaultImeWindow: new DefaultImeWindowFacts(true, 1, 1)));
+        var probe = new WindowsInputStateProbe(reader);
+
+        var observation = probe.Observe(42);
+
+        Assert.Equal(InputState.Unknown, observation.State);
+    }
+
+    [Fact]
+    public void ObserveKeepsImeUnknownWithoutOpenStatus()
+    {
+        var reader = new StubInputStateFactsReader(
+            new InputStateFacts(
+                7,
+                0x0804,
+                true,
+                HasImeContext: false,
+                DefaultImeWindow: new DefaultImeWindowFacts(true, null, 1)));
+        var probe = new WindowsInputStateProbe(reader);
+
+        var observation = probe.Observe(42);
+
+        Assert.Equal(InputState.Unknown, observation.State);
+    }
+
+    [Fact]
+    public void ObserveKeepsImeUnknownWithoutConversionMode()
+    {
+        var reader = new StubInputStateFactsReader(
+            new InputStateFacts(
+                7,
+                0x0804,
+                true,
+                HasImeContext: false,
+                DefaultImeWindow: new DefaultImeWindowFacts(true, 1, null)));
+        var probe = new WindowsInputStateProbe(reader);
+
+        var observation = probe.Observe(42);
+
+        Assert.Equal(InputState.Unknown, observation.State);
     }
 
     [Theory]

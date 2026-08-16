@@ -15,9 +15,9 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 窗口中的主要字段：
 
 - `Eligibility`：最终语义分类；
-- `InputState`：输入状态；当前仅把稳定的非 IME 布局标为 `English`，其余为 `Unknown`；
+- `InputState`：输入状态；稳定的非 IME 布局标为 `English`，中文 IME 仅在开关状态和转换模式证据一致时标为 `Chinese`/`English`，其余为 `Unknown`；
 - `InputLanguage`：前台输入线程 HKL 的语言 ID，仅用于兼容诊断；
-- `IsIME / HasIMEContext / IMEOpen / ConversionMode`：IMM32 实验事实；它们不会在画像验证前直接映射成中文或英文；
+- `IsIME / HasIMEContext / IMEOpen / ConversionMode`：IMM32 实验事实；只有中文语言布局且证据一致时才参与状态归类；
 - `HasDefaultIMEWnd / WindowOpenStatus / WindowConvMode`：默认 IME 窗口消息路径的实验事实；成功返回的 `0` 与查询失败严格区分；
 - `EvidenceGrade`：证据是已确认、已降级还是未知；
 - `ReasonCode`：为什么显示、隐藏或降级；
@@ -96,4 +96,4 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 - IMM32 模式也会前后复核；采样期间模式变化时整条观察按 `ConflictingEvidence` 丢弃。
 - 默认 IME 窗口查询使用 25ms 短超时，并启用挂起和窗口退出保护；消息失败不会伪装成英文状态。
 - 诊断历史会合并连续且语义完全相同的观察，只保留最新时间和耗时；Generation、输入状态或任一 IME 证据变化都会保留为独立记录。
-- 当前只把稳定的非 IME 布局标为 `English`。微软拼音中/英文与 Caps Lock 仍为实验来源，未通过实机兼容矩阵前保持 `Unknown`；技术依据见 `windows-input-state-research.md`。
+- 当前支持一个受限的中文 IME 画像候选：中文语言布局的 `IME_CMODE_NATIVE` 表示中文，未设置表示英文；直接 IMM 与默认 IME 窗口的开关/模式证据冲突时保持 `Unknown`。这不是对所有 IME 的兼容承诺，仍需按应用和输入法版本扩充实机兼容矩阵；技术依据见 `windows-input-state-research.md`。

@@ -72,7 +72,7 @@ foreground HWND
 - 但 [`WM_IME_CONTROL`](https://learn.microsoft.com/en-us/windows/win32/intl/wm-ime-control) 的桌面文档把它描述为应用控制其创建的 IME 窗口，列出的命令主要是候选/组合/状态窗口 UI；它没有把 `IMC_GETOPENSTATUS` 或 `IMC_GETCONVERSIONMODE` 作为面向跨进程读取模式的桌面契约。
 - [`SendMessage`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendmessagew) 和 [`SendMessageTimeout`](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendmessagetimeoutw) 在跨线程时会等待接收窗口处理消息；消息发送受 UIPI 限制，只能发往完整性级别不高于发送方的进程。`SendMessageTimeout` 可设置超时，并提供 `SMTO_ABORTIFHUNG`、`SMTO_ERRORONEXIT`；系统只自动封送 `WM_USER` 以下的系统消息。
 
-**工程决策：** `ImmGetDefaultIMEWnd` + `WM_IME_CONTROL` 可以作为隔离的 fallback 实验，但不进入 V1 的“已支持”主路径。若以后实测某一版本的微软拼音稳定支持它，调用必须使用 `SendMessageTimeout`（短超时、`SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT`、不在 UI 线程）、每次重新取窗口句柄、并把超时/UIPI/返回异常全部视为 `Unknown`。绝不使用无超时的 `SendMessage`。
+**工程决策：** `ImmGetDefaultIMEWnd` + `WM_IME_CONTROL` 目前作为已隔离的候选证据路径参与中文语言布局归类，但不构成对所有 IME 的“已支持”承诺。调用必须使用 `SendMessageTimeout`（短超时、`SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT`、不在 UI 线程）、每次重新取窗口句柄、并把超时/UIPI/返回异常全部视为 `Unknown`。绝不使用无超时的 `SendMessage`。
 
 ## 4. 微软拼音与 TSF：哪些是可靠事实，哪些只能试验
 
@@ -103,7 +103,7 @@ foreground HWND
 1. 先运行阶段 1/2 的输入上下文探测。仅 `EditableCaret` 且有通过验证的当前 Generation 才允许读取输入状态；选区、只读、无焦点、权限不足和坐标缺失都不读/不显示。
 2. 采样前取得前台 HWND、前台线程/进程、焦点 HWND/线程与 HKL；采样后重复取得并逐项比较。任一变化丢弃。
 3. `ImmIsIME(HKL) == false` 时，可发布低歧义的 `English`（含 `HKL` 与来源健康度），但不能据此推断 Caps Lock。
-4. `ImmIsIME(HKL) == true` 时，先尝试 `ImmGetContext` 路径；只有 `HIMC` 有效、调用成功、该微软拼音画像已在兼容矩阵通过、且模式位可解释时，才发布 `Chinese`/`English`。
+4. `ImmIsIME(HKL) == true` 时，先尝试 `ImmGetContext` 与默认 IME 窗口路径；当前实现仅对中文语言布局启用候选归类：开关状态和 `IME_CMODE_NATIVE` 证据至少有一条可用且来源不冲突时，才发布 `Chinese`/`English`。其他 IME 或冲突情况保持 `Unknown`。
 5. Caps Lock 只作为独立附加证据读取；不反向把未知 IME 状态解释为 Caps Lock，也不因 Caps Lock 值而突破 Eligibility。
 
 ### 必须降级为 `Unknown` 并隐藏的情况
