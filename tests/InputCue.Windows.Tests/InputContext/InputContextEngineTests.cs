@@ -13,7 +13,7 @@ public sealed class InputContextEngineTests
         using var runtime = new TestInputContextRuntime(
             InputState.English,
             inputStateEvidence);
-        var engine = new InputContextEngine(
+        using var engine = new InputContextEngine(
             TimeSpan.FromSeconds(5),
             ignoreCurrentProcess: false,
             runtime);
@@ -32,7 +32,7 @@ public sealed class InputContextEngineTests
     public async Task WatchAsyncRefreshesInputStateWithinInteractiveBudgetWithoutEvent()
     {
         using var runtime = new MutableInputStateRuntime(InputState.Chinese);
-        var engine = new InputContextEngine(
+        using var engine = new InputContextEngine(
             sampleInterval: null,
             ignoreCurrentProcess: false,
             runtime);
@@ -69,7 +69,7 @@ public sealed class InputContextEngineTests
         using var runtime = new MutableInputStateRuntime(
             InputState.Unknown,
             hasEditableFocus: false);
-        var engine = new InputContextEngine(
+        using var engine = new InputContextEngine(
             TimeSpan.FromSeconds(5),
             ignoreCurrentProcess: false,
             runtime);
@@ -92,7 +92,7 @@ public sealed class InputContextEngineTests
         using var runtime = new MutableInputStateRuntime(
             InputState.Chinese,
             hasCaret: false);
-        var engine = new InputContextEngine(
+        using var engine = new InputContextEngine(
             TimeSpan.FromSeconds(5),
             ignoreCurrentProcess: false,
             runtime);
@@ -124,7 +124,7 @@ public sealed class InputContextEngineTests
         using var runtime = new MutableInputStateRuntime(
             InputState.English,
             caretAvailableAfterObservation: 2);
-        var engine = new InputContextEngine(
+        using var engine = new InputContextEngine(
             TimeSpan.FromSeconds(5),
             ignoreCurrentProcess: false,
             runtime);
@@ -148,7 +148,7 @@ public sealed class InputContextEngineTests
         using var runtime = new MutableInputStateRuntime(
             InputState.English,
             hasCaret: false);
-        var engine = new InputContextEngine(
+        using var engine = new InputContextEngine(
             TimeSpan.FromSeconds(5),
             ignoreCurrentProcess: false,
             runtime);
@@ -168,7 +168,7 @@ public sealed class InputContextEngineTests
     public async Task WatchAsyncStopsWhenCancellationIsRequested()
     {
         using var runtime = new TestInputContextRuntime();
-        var engine = new InputContextEngine(
+        using var engine = new InputContextEngine(
             TimeSpan.FromSeconds(5),
             ignoreCurrentProcess: false,
             runtime);
@@ -185,10 +185,57 @@ public sealed class InputContextEngineTests
     }
 
     [Fact]
+    public async Task WatchAsyncFallsBackToObservationWhenNoChangeEventArrives()
+    {
+        using var runtime = new TestInputContextRuntime();
+        using var engine = new InputContextEngine(
+            TimeSpan.FromMilliseconds(50),
+            ignoreCurrentProcess: false,
+            runtime);
+        using var cancellation = new CancellationTokenSource();
+        await using var enumerator = engine
+            .WatchAsync(cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.Equal("target-1", enumerator.Current.Target.ProcessName);
+
+        Assert.True(await enumerator.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromMilliseconds(300)));
+        Assert.Equal("target-2", enumerator.Current.Target.ProcessName);
+        cancellation.Cancel();
+    }
+
+    [Fact]
+    public async Task WatchAsyncCanRestartAfterRepeatedCancellation()
+    {
+        using var runtime = new TestInputContextRuntime();
+        using var engine = new InputContextEngine(
+            TimeSpan.FromSeconds(5),
+            ignoreCurrentProcess: false,
+            runtime);
+
+        for (var cycle = 0; cycle < 10; cycle++)
+        {
+            using var cancellation = new CancellationTokenSource();
+            await using var enumerator = engine
+                .WatchAsync(cancellation.Token)
+                .GetAsyncEnumerator(cancellation.Token);
+
+            Assert.True(await enumerator.MoveNextAsync());
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+                await enumerator.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+
+        Assert.Equal(10, runtime.ObservationCount);
+        Assert.Equal(1, engine.QueryWorkerCreationCount);
+    }
+
+    [Fact]
     public async Task WatchAsyncCoalescesChangesInsideTheDebounceWindow()
     {
         using var runtime = new TestInputContextRuntime();
-        var engine = new InputContextEngine(
+        using var engine = new InputContextEngine(
             TimeSpan.FromSeconds(5),
             ignoreCurrentProcess: false,
             runtime);
@@ -215,7 +262,7 @@ public sealed class InputContextEngineTests
     public async Task WatchAsyncBoundsFullObservationsDuringAnEventStorm()
     {
         using var runtime = new TestInputContextRuntime();
-        var engine = new InputContextEngine(
+        using var engine = new InputContextEngine(
             TimeSpan.FromSeconds(5),
             ignoreCurrentProcess: false,
             runtime);
@@ -245,7 +292,7 @@ public sealed class InputContextEngineTests
     public async Task WatchAsyncKeepsOnlyTheLatestObservationForSlowConsumers()
     {
         using var runtime = new TestInputContextRuntime();
-        var engine = new InputContextEngine(
+        using var engine = new InputContextEngine(
             TimeSpan.FromSeconds(5),
             ignoreCurrentProcess: false,
             runtime);

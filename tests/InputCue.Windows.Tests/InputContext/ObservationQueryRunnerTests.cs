@@ -8,7 +8,7 @@ public sealed class ObservationQueryRunnerTests
     [Fact]
     public void ObserveReturnsCompletedObservation()
     {
-        var runner = new ObservationQueryRunner(
+        using var runner = new ObservationQueryRunner(
             SuccessfulObservation,
             TimeSpan.FromSeconds(1),
             TimeSpan.FromSeconds(2));
@@ -19,12 +19,27 @@ public sealed class ObservationQueryRunnerTests
     }
 
     [Fact]
+    public void CompletedQueriesReuseOneWorkerThread()
+    {
+        using var runner = new ObservationQueryRunner(
+            SuccessfulObservation,
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(2));
+        for (var query = 0; query < 100; query++)
+        {
+            _ = runner.Observe(CancellationToken.None);
+        }
+
+        Assert.Equal(1, runner.WorkerCreationCount);
+    }
+
+    [Fact]
     public void ObserveDoesNotStartAnotherQueryWhileTimedOutQueryIsStillRunning()
     {
         using var releaseQuery = new ManualResetEventSlim();
         using var queryFinished = new ManualResetEventSlim();
         var invocationCount = 0;
-        var runner = new ObservationQueryRunner(
+        using var runner = new ObservationQueryRunner(
             () =>
             {
                 Interlocked.Increment(ref invocationCount);
@@ -53,7 +68,7 @@ public sealed class ObservationQueryRunnerTests
         using var firstQueryFinished = new ManualResetEventSlim();
         var invocationCount = 0;
         var timeProvider = new ManualTimeProvider();
-        var runner = new ObservationQueryRunner(
+        using var runner = new ObservationQueryRunner(
             () =>
             {
                 if (Interlocked.Increment(ref invocationCount) == 1)

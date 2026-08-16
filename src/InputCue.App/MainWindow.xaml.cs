@@ -110,6 +110,7 @@ public partial class MainWindow : Window, IDisposable
         _indicatorTimer.Stop();
         _keyboardInputMonitor.EditingKeyPressed -= OnEditingKeyPressed;
         _keyboardInputMonitor.Dispose();
+        _engine.Dispose();
         _overlayPresenter.Dispose();
         GC.SuppressFinalize(this);
     }

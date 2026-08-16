@@ -5,7 +5,7 @@ using InputCue.Core.InputContext;
 
 namespace InputCue.Windows.InputContext;
 
-public sealed class InputContextEngine
+public sealed class InputContextEngine : IDisposable
 {
     private static readonly TimeSpan CircuitCooldown = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan EventDebounceInterval = TimeSpan.FromMilliseconds(40);
@@ -16,8 +16,12 @@ public sealed class InputContextEngine
     private static readonly TimeSpan DefaultSampleInterval = TimeSpan.FromSeconds(2);
     private const int PositionRetryLimit = 3;
     private readonly bool _ignoreCurrentProcess;
+    private readonly ObservationQueryRunner _queryRunner;
     private readonly IInputContextRuntime _runtime;
     private readonly TimeSpan _sampleInterval;
+    private bool _disposed;
+
+    internal int QueryWorkerCreationCount => _queryRunner.WorkerCreationCount;
 
     public InputContextEngine(TimeSpan? sampleInterval = null)
         : this(
@@ -41,6 +45,10 @@ public sealed class InputContextEngine
 
         _ignoreCurrentProcess = ignoreCurrentProcess;
         _runtime = runtime;
+        _queryRunner = new ObservationQueryRunner(
+            _runtime.Observe,
+            QueryTimeout,
+            CircuitCooldown);
         _sampleInterval = sampleInterval ?? DefaultSampleInterval;
         if (_sampleInterval < TimeSpan.FromMilliseconds(50) ||
             _sampleInterval > TimeSpan.FromSeconds(5))
@@ -54,6 +62,7 @@ public sealed class InputContextEngine
     public async IAsyncEnumerable<InputContextDiagnostic> WatchAsync(
         [EnumeratorCancellation] CancellationToken cancellation = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         var channel = Channel.CreateBounded<InputContextDiagnostic>(
             new BoundedChannelOptions(1)
             {
@@ -89,10 +98,6 @@ public sealed class InputContextEngine
         CancellationToken cancellationToken)
     {
         using var eventSource = _runtime.CreateEventSource();
-        var queryRunner = new ObservationQueryRunner(
-            _runtime.Observe,
-            QueryTimeout,
-            CircuitCooldown);
         var refreshTarget = RawInputContextObservation.Failure(ProbeIssue.SourceUnavailable, 0);
         ObservationFingerprint? previousFingerprint = null;
         RawInputContextObservation? currentObservation = null;
@@ -108,7 +113,7 @@ public sealed class InputContextEngine
             {
                 if (needsFullObservation)
                 {
-                    currentObservation = queryRunner.Observe(cancellationToken);
+                    currentObservation = _queryRunner.Observe(cancellationToken);
                     lastFullObservationAt = Stopwatch.GetTimestamp();
                     needsFullObservation = false;
 
@@ -268,6 +273,17 @@ public sealed class InputContextEngine
                 return;
             }
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _queryRunner.Dispose();
     }
 
     private static void WaitForEventObservationBudget(
