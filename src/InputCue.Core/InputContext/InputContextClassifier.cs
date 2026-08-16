@@ -94,6 +94,18 @@ public static class InputContextClassifier
     {
         if (evidence.UiAutomationCaret is { IsUsable: true } uiAutomationCaret)
         {
+            if (evidence.Win32Caret is { IsUsable: true } fallbackWin32Caret &&
+                IsContainerLike(uiAutomationCaret, fallbackWin32Caret))
+            {
+                return (fallbackWin32Caret, AnchorSource.Win32, EvidenceGrade.Degraded);
+            }
+
+            if (evidence.MsaaCaret is { IsUsable: true } fallbackMsaaCaret &&
+                IsContainerLike(uiAutomationCaret, fallbackMsaaCaret))
+            {
+                return (fallbackMsaaCaret, AnchorSource.Msaa, EvidenceGrade.Degraded);
+            }
+
             return (uiAutomationCaret, AnchorSource.UiAutomation, EvidenceGrade.Confirmed);
         }
 
@@ -108,6 +120,25 @@ public static class InputContextClassifier
         }
 
         return (null, AnchorSource.None, EvidenceGrade.Unknown);
+    }
+
+    private static bool IsContainerLike(ScreenRect candidate, ScreenRect fallback)
+    {
+        const double coordinateTolerance = 2;
+
+        // Some TextPattern providers expose the whole focused control as a collapsed range.
+        // Downgrade only when an independent caret is inside and substantially smaller.
+        var containsFallback = candidate.X - coordinateTolerance <= fallback.X &&
+            candidate.Y - coordinateTolerance <= fallback.Y &&
+            candidate.X + candidate.Width + coordinateTolerance >= fallback.X + fallback.Width &&
+            candidate.Y + candidate.Height + coordinateTolerance >= fallback.Y + fallback.Height;
+        if (!containsFallback)
+        {
+            return false;
+        }
+
+        return candidate.Width >= Math.Max(32, fallback.Width * 8) ||
+            candidate.Height >= Math.Max(48, fallback.Height * 2);
     }
 
     private static ReasonCode ReasonFor(ProbeIssue issue) => issue switch

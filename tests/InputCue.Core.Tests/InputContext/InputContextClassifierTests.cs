@@ -64,6 +64,67 @@ public sealed class InputContextClassifierTests
         Assert.Equal(EvidenceGrade.Degraded, result.EvidenceGrade);
     }
 
+    [Fact]
+    public void ClassifyPrefersMsaaWhenUiAutomationBoundsContainTheCaret()
+    {
+        var msaaCaret = new ScreenRect(100, 117, 1, 21);
+        var uiAutomationBounds = new ScreenRect(100, 100, 598, 56);
+        var evidence = Evidence(
+            editable: true,
+            readOnly: false,
+            selection: false,
+            uiAutomationCaret: uiAutomationBounds,
+            msaaCaret: msaaCaret);
+
+        var result = InputContextClassifier.Classify(1, ObservedAt, InputState.Unknown, evidence);
+
+        Assert.Equal(Eligibility.EditableCaret, result.Eligibility);
+        Assert.Equal(msaaCaret, result.Anchor);
+        Assert.Equal(AnchorSource.Msaa, result.AnchorSource);
+        Assert.Equal(EvidenceGrade.Degraded, result.EvidenceGrade);
+    }
+
+    [Fact]
+    public void ClassifyKeepsUiAutomationWhenBoundsAreCaretSized()
+    {
+        var msaaCaret = new ScreenRect(100, 120, 1, 20);
+        var uiAutomationCaret = new ScreenRect(100, 120, 2, 20);
+        var evidence = Evidence(
+            editable: true,
+            readOnly: false,
+            selection: false,
+            uiAutomationCaret: uiAutomationCaret,
+            msaaCaret: msaaCaret);
+
+        var result = InputContextClassifier.Classify(1, ObservedAt, InputState.Unknown, evidence);
+
+        Assert.Equal(Eligibility.EditableCaret, result.Eligibility);
+        Assert.Equal(uiAutomationCaret, result.Anchor);
+        Assert.Equal(AnchorSource.UiAutomation, result.AnchorSource);
+        Assert.Equal(EvidenceGrade.Confirmed, result.EvidenceGrade);
+    }
+
+    [Fact]
+    public void ClassifyPrefersWin32BeforeMsaaForContainerLikeUiAutomationBounds()
+    {
+        var win32Caret = new ScreenRect(101, 117, 1, 21);
+        var msaaCaret = new ScreenRect(100, 117, 1, 21);
+        var uiAutomationBounds = new ScreenRect(100, 100, 598, 56);
+        var evidence = Evidence(
+            editable: true,
+            readOnly: false,
+            selection: false,
+            uiAutomationCaret: uiAutomationBounds,
+            win32Caret: win32Caret,
+            msaaCaret: msaaCaret);
+
+        var result = InputContextClassifier.Classify(1, ObservedAt, InputState.Unknown, evidence);
+
+        Assert.Equal(win32Caret, result.Anchor);
+        Assert.Equal(AnchorSource.Win32, result.AnchorSource);
+        Assert.Equal(EvidenceGrade.Degraded, result.EvidenceGrade);
+    }
+
     [Theory]
     [InlineData(ProbeIssue.TimedOut, ReasonCode.TimedOut)]
     [InlineData(ProbeIssue.InsufficientPrivilege, ReasonCode.InsufficientPrivilege)]
@@ -88,12 +149,13 @@ public sealed class InputContextClassifierTests
         bool? readOnly,
         bool? selection,
         ScreenRect? uiAutomationCaret = null,
-        ScreenRect? win32Caret = null) =>
+        ScreenRect? win32Caret = null,
+        ScreenRect? msaaCaret = null) =>
         new(
             editable,
             readOnly,
             selection,
             uiAutomationCaret,
             win32Caret,
-            null);
+            msaaCaret);
 }

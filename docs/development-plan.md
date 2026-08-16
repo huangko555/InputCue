@@ -8,18 +8,19 @@
 
 ## 当前基线（2026-08-16）
 
-当前提交点：`b23942a feat: classify verified Chinese IME states`。
+当前实现基线：截至本文件所在提交。
 
 已验证：
 
 - 记事本中的微软拼音中文/英文状态可以通过默认 IME 窗口和转换模式归类；
 - Chrome/Edge 中部分标准 `Edit` 控件可以识别为 `EditableCaret`，Chrome 当前主要依赖 MSAA Caret，证据等级为 `Degraded`；
+- Chrome Google 搜索框的可写 `ComboBox` 已通过真实前台 Trace 验证，可稳定区分可编辑 Caret 与网页正文；
 - 静态网页正文和非编辑控件不会因为鼠标悬停被当成可编辑光标；
-- 87 个自动化测试、Release 构建和格式检查通过。
+- 真实 Trace 暴露的 UIA 整控件矩形会在独立 Win32/MSAA Caret 位于其中时安全回退；
+- 92 个自动化测试、Release 构建和格式检查通过。
 
 已确认但尚未解决：
 
-- Google 等网页搜索/自动补全框可能以可写 `ComboBox` 暴露；候选策略已实现为“仅有 `ValuePattern` 且可写时纳入”，真实前台控件 Trace 仍待验证；浏览器自动化操作不能替代 Windows 前台焦点测试；
 - WPS 正文点击后画面上有光标，但跨进程观察经常在发布前变成 `ConflictingEvidence`；
 - Windows Terminal 使用 `XAML + TermControl + ControlType.Text`，当前策略会判定为 `NoEditableFocus`；
 - 可编辑控件存在非折叠选区时目前隐藏，地址栏全选等场景尚未支持提示。
@@ -137,7 +138,7 @@
 
 ### 3A.1 网页可编辑 `ComboBox`
 
-- 当前进度：候选策略和边界测试已完成；浏览器自动化无法稳定改变 Windows UIA 焦点，下一步必须用真实鼠标键盘建立 Google/自动补全框正例 Trace；
+- 当前进度：候选策略、边界测试和真实前台 Google Trace 已完成；网页正文和建议项负例保持隐藏；
 - 将 `ComboBox` 仅在存在可写 `ValuePattern` 且 `IsReadOnly=false` 时纳入候选；
 - 增加 Google 搜索框/自动补全框正例；
 - 增加普通下拉框、只读 ComboBox 和网页按钮负例；
