@@ -6,6 +6,26 @@
 
 预计投入：一名开发者约 6–8 个专注周；若以业余时间推进，建议按 10–12 周安排。每个阶段都设继续/停止门槛，避免 UI 完成后才发现底层不可用。
 
+## 当前基线（2026-08-16）
+
+当前提交点：`b23942a feat: classify verified Chinese IME states`。
+
+已验证：
+
+- 记事本中的微软拼音中文/英文状态可以通过默认 IME 窗口和转换模式归类；
+- Chrome/Edge 中部分标准 `Edit` 控件可以识别为 `EditableCaret`，Chrome 当前主要依赖 MSAA Caret，证据等级为 `Degraded`；
+- 静态网页正文和非编辑控件不会因为鼠标悬停被当成可编辑光标；
+- 87 个自动化测试、Release 构建和格式检查通过。
+
+已确认但尚未解决：
+
+- Google 等网页搜索/自动补全框可能以可写 `ComboBox` 暴露，当前策略只接受 `Edit`/`Document`；
+- WPS 正文点击后画面上有光标，但跨进程观察经常在发布前变成 `ConflictingEvidence`；
+- Windows Terminal 使用 `XAML + TermControl + ControlType.Text`，当前策略会判定为 `NoEditableFocus`；
+- 可编辑控件存在非折叠选区时目前隐藏，地址栏全选等场景尚未支持提示。
+
+这些问题必须分别建立脱敏 Trace 后再改规则，不能用一个“放宽所有控件”的特判解决。
+
 ## 阶段 0：工程基线（1–2 天）
 
 ### 工作
@@ -90,7 +110,7 @@
 
 - 完成专用 STA 调度器和有界队列；
 - 实现 UIA 主路径、Win32/MSAA 补充路径；
-- 实现微软拼音中文/英文状态与 Caps Lock；
+- 实现已验证画像的微软拼音中文/英文状态；Caps Lock 延后到兼容性缺口收敛后；
 - 增加输入法和框架来源健康度、超时熔断；
 - 按兼容矩阵测试首批应用；
 - 仅在有 Trace 和回归用例后增加应用画像。
@@ -99,9 +119,9 @@
 
 | 层级 | 场景 | 要求 |
 |---|---|---|
-| A | 记事本、原生编辑框、Edge/Chrome 普通输入框 | V1 发布前必须通过 |
-| B | VS Code、Windows Terminal、微信 | 允许位置降级，但不得误报 |
-| C | Word/WPS 基础编辑 | 记录能力边界；不能稳定时默认隐藏 |
+| A | 记事本、原生编辑框、已验证的 Edge/Chrome `Edit` 输入框 | V1 发布前必须通过 |
+| B | Google 类网页 `ComboBox`、VS Code、微信 | 有明确正负 Trace 后决定是否进入 V1 |
+| C | Windows Terminal `TermControl`、Word/WPS 基础编辑 | 单独适配；不能稳定时默认隐藏 |
 | Deferred | JetBrains/JAB、游戏、远程应用、自绘控件 | V1 不承诺支持 |
 
 ### 验收
@@ -110,6 +130,45 @@
 - B 级场景即使无法定位，也不会在只读区域误报；
 - 权限不足、控件不可访问和超时均安全隐藏；
 - 不要求管理员权限，不安装系统服务或注入 DLL。
+
+## 阶段 3A：兼容性缺口收敛（预计 1 周）
+
+该阶段必须在提示层开发前完成，避免把错误的输入上下文传给 Overlay。
+
+### 3A.1 网页可编辑 `ComboBox`
+
+- 将 `ComboBox` 仅在存在可写 `ValuePattern` 且 `IsReadOnly=false` 时纳入候选；
+- 增加 Google 搜索框/自动补全框正例；
+- 增加普通下拉框、只读 ComboBox 和网页按钮负例；
+- Caret 仍必须来自 UIA、Win32 或 MSAA，不能用鼠标坐标补齐。
+
+### 3A.2 可编辑选区
+
+- 区分 `EditableSelection` 与 `ReadOnlySelection`；
+- 可编辑选区允许尝试取得活动 Caret 或选区安全锚点；
+- 没有安全锚点时保持 `PositionUnknown`/隐藏；
+- 网页正文拖选仍必须保持隐藏。
+
+### 3A.3 WPS 文档
+
+- 记录连续两次以上点击正文后的完整观察链；
+- 确认 WPS 稳定的文档宿主/窗口身份，避免使用每次变化的嵌套 UIA RuntimeId；
+- 仅在当前 WPS 进程和文档宿主匹配时尝试 MSAA/Win32 Caret；
+- 无法稳定确认焦点或锚点时默认隐藏，不放宽全局 `ConflictingEvidence` 规则。
+
+### 3A.4 Windows Terminal
+
+- 只针对 `FrameworkId=XAML + ClassName=TermControl` 评估可编辑资格；
+- 不把所有 `ControlType.Text` 当作输入控件；
+- 若 Terminal 没有稳定 Caret 来源，记录为 `PositionUnknown` 并保持隐藏。
+
+### 3A 验收门槛
+
+- 每个缺口至少有一个正例和一个负例 Trace；
+- Chrome/Edge 网页输入框、网页正文拖选和普通下拉框不能互相误判；
+- WPS 至少两次连续采样结果一致，或明确记录为 V1 不支持；
+- Terminal 不因可写文本标签、输出区域或鼠标悬停产生 `EditableCaret`；
+- 所有新增应用特判都限制在 `InputCue.Windows` 内，并有对应单元/回放测试。
 
 ## 阶段 4：提示层与最小设置（约 1 周）
 
