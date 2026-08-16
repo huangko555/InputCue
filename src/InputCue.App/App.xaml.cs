@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Windows;
 using InputCue.App.Diagnostics;
+using InputCue.Core.Settings;
 using InputCue.Windows.SingleInstance;
 using Forms = System.Windows.Forms;
 
@@ -77,7 +79,12 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        var mainWindow = new MainWindow();
+        var settingsPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "InputCue",
+            "settings.json");
+        var settingsStore = new InputCueSettingsStore(settingsPath);
+        var mainWindow = new MainWindow(settingsStore.Load(), settingsStore.TrySave);
         MainWindow = mainWindow;
         mainWindow.Closing += OnMainWindowClosing;
         mainWindow.WatchingStateChanged += OnWatchingStateChanged;

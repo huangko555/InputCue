@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Threading;
 using InputCue.Core.Indicator;
 using InputCue.Core.InputContext;
+using InputCue.Core.Settings;
 using InputCue.Overlay;
 using InputCue.Windows.InputContext;
 using Microsoft.Win32;
@@ -30,22 +31,37 @@ public partial class MainWindow : Window, IDisposable
     private readonly InputContextTraceBuffer _history = new(HistoryCapacity);
     private readonly DispatcherTimer _indicatorTimer;
     private readonly RawKeyboardInputMonitor _keyboardInputMonitor = new();
+    private readonly Func<InputCueSettings, bool> _saveSettings;
     private InputContextDiagnostic? _lastBaseDiagnostic;
     private CancellationTokenSource? _watchCancellation;
     private bool _capsLockEnabled;
     private bool _disposed;
-    private bool _indicatorEnabled = true;
+    private bool _indicatorEnabled;
+    private bool _settingsInitialized;
+    private int _displayDurationMilliseconds;
+    private int _minimumDisplayDurationMilliseconds;
 
     public event EventHandler? WatchingStateChanged;
 
     public bool IsWatching => _watchCancellation is not null;
 
-    public MainWindow()
+    public MainWindow(
+        InputCueSettings settings,
+        Func<InputCueSettings, bool> saveSettings)
     {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(saveSettings);
+        _saveSettings = saveSettings;
         InitializeComponent();
+        _indicatorEnabled = settings.IndicatorEnabled;
+        _displayDurationMilliseconds = settings.DisplayDurationMilliseconds;
+        _minimumDisplayDurationMilliseconds = settings.MinimumDisplayDurationMilliseconds;
+        DisplayDurationTextBox.Text = _displayDurationMilliseconds.ToString(CultureInfo.InvariantCulture);
+        MinimumDisplayDurationTextBox.Text =
+            _minimumDisplayDurationMilliseconds.ToString(CultureInfo.InvariantCulture);
         _indicatorSession = CreateIndicatorSession(
-            displayDurationMilliseconds: 1000,
-            minimumDisplayDurationMilliseconds: 300);
+            _displayDurationMilliseconds,
+            _minimumDisplayDurationMilliseconds);
         _capsLockEnabled = UiCapsLockProbe.IsEnabled();
         _indicatorTimer = new DispatcherTimer(
             CapsLockPollInterval,
@@ -53,6 +69,8 @@ public partial class MainWindow : Window, IDisposable
             OnIndicatorTick,
             Dispatcher);
         _keyboardInputMonitor.EditingKeyPressed += OnEditingKeyPressed;
+        IndicatorEnabledCheckBox.IsChecked = _indicatorEnabled;
+        _settingsInitialized = true;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -100,10 +118,16 @@ public partial class MainWindow : Window, IDisposable
     private void OnIndicatorEnabledChanged(object sender, RoutedEventArgs e)
     {
         _indicatorEnabled = IndicatorEnabledCheckBox.IsChecked is true;
+        var saved = PersistSettings();
         if (!_indicatorEnabled)
         {
             _overlayPresenter.Hide();
             _indicatorTimer.Stop();
+            if (!saved)
+            {
+                StatusText.Text = "提示已关闭，但设置未能保存。";
+            }
+
             return;
         }
 
@@ -112,6 +136,11 @@ public partial class MainWindow : Window, IDisposable
             var indicatorState = _indicatorSession.Advance(DateTimeOffset.UtcNow);
             _overlayPresenter.Update(indicatorState);
             UpdateIndicatorTimer(indicatorState, diagnostic.Snapshot.Eligibility);
+        }
+
+        if (!saved)
+        {
+            StatusText.Text = "提示已启用，但设置未能保存。";
         }
     }
 
@@ -124,10 +153,14 @@ public partial class MainWindow : Window, IDisposable
             return;
         }
 
+        _displayDurationMilliseconds = displayDuration;
+        _minimumDisplayDurationMilliseconds = minimumDisplayDuration;
         _indicatorSession = CreateIndicatorSession(displayDuration, minimumDisplayDuration);
         _overlayPresenter.Hide();
         _indicatorTimer.Stop();
-        StatusText.Text = $"已应用显示时长：{displayDuration} ms；输入后最短：{minimumDisplayDuration} ms。";
+        StatusText.Text = PersistSettings()
+            ? $"已应用并保存：显示 {displayDuration} ms；输入后最短 {minimumDisplayDuration} ms。"
+            : "时长已应用，但设置未能保存。";
     }
 
     private async void OnExportClick(object sender, RoutedEventArgs e)
@@ -355,6 +388,13 @@ public partial class MainWindow : Window, IDisposable
             CultureInfo.InvariantCulture,
             out milliseconds) &&
         milliseconds is >= 0 and <= 60000;
+
+    private bool PersistSettings() =>
+        !_settingsInitialized ||
+        _saveSettings(new InputCueSettings(
+            _indicatorEnabled,
+            _displayDurationMilliseconds,
+            _minimumDisplayDurationMilliseconds));
 
     private static string FormatDiagnostic(InputContextDiagnostic diagnostic)
     {
