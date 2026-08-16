@@ -4,6 +4,10 @@ namespace InputCue.Windows.InputContext;
 
 internal static class EditableControlPolicy
 {
-    internal static bool SupportsTextEditing(ControlType? controlType) =>
-        controlType == ControlType.Edit || controlType == ControlType.Document;
+    internal static bool SupportsTextEditing(
+        ControlType? controlType,
+        bool hasValuePattern) =>
+        controlType == ControlType.Edit ||
+        controlType == ControlType.Document ||
+        controlType == ControlType.ComboBox && hasValuePattern;
 }

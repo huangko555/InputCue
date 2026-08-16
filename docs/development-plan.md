@@ -19,7 +19,7 @@
 
 已确认但尚未解决：
 
-- Google 等网页搜索/自动补全框可能以可写 `ComboBox` 暴露，当前策略只接受 `Edit`/`Document`；
+- Google 等网页搜索/自动补全框可能以可写 `ComboBox` 暴露；候选策略已实现为“仅有 `ValuePattern` 且可写时纳入”，真实控件 Trace 仍待验证；
 - WPS 正文点击后画面上有光标，但跨进程观察经常在发布前变成 `ConflictingEvidence`；
 - Windows Terminal 使用 `XAML + TermControl + ControlType.Text`，当前策略会判定为 `NoEditableFocus`；
 - 可编辑控件存在非折叠选区时目前隐藏，地址栏全选等场景尚未支持提示。
@@ -137,6 +137,7 @@
 
 ### 3A.1 网页可编辑 `ComboBox`
 
+- 当前进度：候选策略和边界测试已完成，下一步用 Google/自动补全框建立正例 Trace；
 - 将 `ComboBox` 仅在存在可写 `ValuePattern` 且 `IsReadOnly=false` 时纳入候选；
 - 增加 Google 搜索框/自动补全框正例；
 - 增加普通下拉框、只读 ComboBox 和网页按钮负例；

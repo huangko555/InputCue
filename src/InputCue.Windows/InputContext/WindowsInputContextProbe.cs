@@ -71,7 +71,9 @@ internal sealed class WindowsInputContextProbe : IDisposable
             var hasEditableFocus = current.HasKeyboardFocus &&
                 current.IsEnabled &&
                 isReadOnly is false &&
-                EditableControlPolicy.SupportsTextEditing(current.ControlType);
+                EditableControlPolicy.SupportsTextEditing(
+                    current.ControlType,
+                    valuePattern is not null);
             var shouldProbeCaret = hasEditableFocus && textObservation.HasSelection is not true;
             var textPattern2 = shouldProbeCaret
                 ? _textPattern2CaretProbe.TryGetCaret()
