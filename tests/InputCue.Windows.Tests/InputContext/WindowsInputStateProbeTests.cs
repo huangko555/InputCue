@@ -6,7 +6,7 @@ namespace InputCue.Windows.Tests.InputContext;
 public sealed class WindowsInputStateProbeTests
 {
     [Fact]
-    public void ObserveReturnsEnglishForAStableNonImeLayout()
+    public void ObserveReturnsEnglishUsForTheUsKeyboardLayout()
     {
         var reader = new StubInputStateFactsReader(
             new InputStateFacts(7, 0x0409, false));
@@ -14,10 +14,39 @@ public sealed class WindowsInputStateProbeTests
 
         var observation = probe.Observe(42);
 
-        Assert.Equal(InputState.English, observation.State);
+        Assert.Equal(InputState.EnglishUs, observation.State);
         Assert.Equal((nint)42, observation.TargetWindow);
         Assert.Equal((uint)7, observation.ThreadId);
         Assert.Equal((nint)0x0409, observation.KeyboardLayout);
+    }
+
+    [Fact]
+    public void ObserveReturnsEnglishUsWhenTheUsKeyboardProfileIsReportedAsIme()
+    {
+        var reader = new StubInputStateFactsReader(
+            new InputStateFacts(
+                7,
+                0x0409,
+                true,
+                HasImeContext: false,
+                DefaultImeWindow: new DefaultImeWindowFacts(true, 0, 1)));
+        var probe = new WindowsInputStateProbe(reader);
+
+        var observation = probe.Observe(42);
+
+        Assert.Equal(InputState.EnglishUs, observation.State);
+    }
+
+    [Fact]
+    public void ObserveKeepsOtherStableNonImeLayoutsAsEnglish()
+    {
+        var reader = new StubInputStateFactsReader(
+            new InputStateFacts(7, 0x0809, false));
+        var probe = new WindowsInputStateProbe(reader);
+
+        var observation = probe.Observe(42);
+
+        Assert.Equal(InputState.English, observation.State);
     }
 
     [Fact]

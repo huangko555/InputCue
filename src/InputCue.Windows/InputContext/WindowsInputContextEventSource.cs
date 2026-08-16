@@ -8,6 +8,7 @@ internal sealed class WindowsInputContextEventSource : IInputContextEventSource
 {
     private readonly AutomationFocusChangedEventHandler _focusChangedHandler;
     private readonly AutomationEventHandler _selectionChangedHandler;
+    private readonly NativeFocusEventHook _nativeFocusHook;
     private readonly AutoResetEvent _signal = new(initialState: false);
     private bool _focusSubscribed;
     private bool _selectionSubscribed;
@@ -17,6 +18,7 @@ internal sealed class WindowsInputContextEventSource : IInputContextEventSource
     {
         _focusChangedHandler = OnFocusChanged;
         _selectionChangedHandler = OnSelectionChanged;
+        _nativeFocusHook = new NativeFocusEventHook(Signal);
     }
 
     internal static WindowsInputContextEventSource Create()
@@ -31,14 +33,8 @@ internal sealed class WindowsInputContextEventSource : IInputContextEventSource
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellation.ThrowIfCancellationRequested();
 
-        var result = WaitHandle.WaitAny(
-            [_signal, cancellation.WaitHandle],
-            fallbackInterval);
-        if (result == 1)
-        {
-            cancellation.ThrowIfCancellationRequested();
-        }
-
+        var result = WaitHandle.WaitAny([_signal, cancellation.WaitHandle], fallbackInterval);
+        cancellation.ThrowIfCancellationRequested();
         return result == 0;
     }
 
@@ -50,6 +46,7 @@ internal sealed class WindowsInputContextEventSource : IInputContextEventSource
         }
 
         _disposed = true;
+        _nativeFocusHook.Dispose();
 
         if (_selectionSubscribed)
         {
@@ -87,6 +84,7 @@ internal sealed class WindowsInputContextEventSource : IInputContextEventSource
         catch (Exception exception) when (IsExpectedAutomationFailure(exception))
         {
         }
+
     }
 
     private void OnFocusChanged(object sender, AutomationFocusChangedEventArgs e) => Signal();
@@ -141,4 +139,5 @@ internal sealed class WindowsInputContextEventSource : IInputContextEventSource
             InvalidOperationException or
             NotSupportedException or
             UnauthorizedAccessException;
+
 }

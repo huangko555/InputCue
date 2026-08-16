@@ -1,0 +1,32 @@
+<Window x:Class="InputCue.Overlay.IndicatorOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="18"
+        Height="18"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Focusable="False"
+        ResizeMode="NoResize"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        SizeToContent="Manual"
+        Topmost="True"
+        WindowStyle="None">
+    <Grid IsHitTestVisible="False">
+        <Ellipse x:Name="IndicatorDot"
+                 Width="12"
+                 Height="12"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center"
+                 Fill="#2F7FD6"
+                 Stroke="#FFFFFFFF"
+                 StrokeThickness="2">
+            <Ellipse.Effect>
+                <DropShadowEffect BlurRadius="4"
+                                  Direction="270"
+                                  Opacity="0.28"
+                                  ShadowDepth="1" />
+            </Ellipse.Effect>
+        </Ellipse>
+    </Grid>
+</Window>

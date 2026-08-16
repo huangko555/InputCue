@@ -24,6 +24,31 @@
             <TextBlock Margin="0,8,0,0"
                        Foreground="#666666"
                        Text="切换到其他应用进行输入、拖选或悬停测试；返回本窗口后会保留最后一次外部观察。" />
+            <CheckBox x:Name="IndicatorEnabledCheckBox"
+                      Margin="0,12,0,0"
+                      HorizontalAlignment="Left"
+                      IsChecked="True"
+                      Checked="OnIndicatorEnabledChanged"
+                      Unchecked="OnIndicatorEnabledChanged"
+                      Content="启用提示" />
+            <StackPanel Margin="0,10,0,0"
+                        Orientation="Horizontal">
+                <TextBlock VerticalAlignment="Center"
+                           Text="显示时长 (ms)" />
+                <TextBox x:Name="DisplayDurationTextBox"
+                         Width="72"
+                         Margin="8,0,12,0"
+                         Text="1000" />
+                <TextBlock VerticalAlignment="Center"
+                           Text="输入后最短 (ms)" />
+                <TextBox x:Name="MinimumDisplayDurationTextBox"
+                         Width="72"
+                         Margin="8,0,12,0"
+                         Text="300" />
+                <Button Padding="10,4"
+                        Click="OnTimingSettingsClick"
+                        Content="应用" />
+            </StackPanel>
         </StackPanel>
 
         <Border Grid.Row="1"

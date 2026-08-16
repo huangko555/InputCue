@@ -15,10 +15,31 @@ public sealed class ObservationFingerprintTests
     }
 
     [Fact]
-    public void FingerprintChangesWhenSelectionStarts()
+    public void FingerprintDoesNotChangeWhenSelectionStarts()
     {
         var first = Observation(hasSelection: false);
         var second = Observation(hasSelection: true);
+
+        Assert.Equal(first.Fingerprint, second.Fingerprint);
+    }
+
+    [Fact]
+    public void FingerprintDoesNotChangeWhenTargetFactsTemporarilyDegrade()
+    {
+        var confirmed = Observation();
+        var degraded = Observation(
+            hasEditableFocus: false,
+            isReadOnly: null,
+            issue: ProbeIssue.SourceUnavailable);
+
+        Assert.Equal(confirmed.Fingerprint, degraded.Fingerprint);
+    }
+
+    [Fact]
+    public void FingerprintChangesWhenAutomationTargetChanges()
+    {
+        var first = Observation(automationElementIdentity: 3);
+        var second = Observation(automationElementIdentity: 5);
 
         Assert.NotEqual(first.Fingerprint, second.Fingerprint);
     }
@@ -35,21 +56,26 @@ public sealed class ObservationFingerprintTests
     private static RawInputContextObservation Observation(
         bool hasSelection = true,
         InputState inputState = InputState.Unknown,
-        double caretX = 100) =>
+        double caretX = 100,
+        bool hasEditableFocus = true,
+        bool? isReadOnly = false,
+        ProbeIssue issue = ProbeIssue.None,
+        int automationElementIdentity = 3) =>
         new(
             1,
             2,
-            3,
+            automationElementIdentity,
             new TargetDescriptor(4, "browser", "ControlType.Edit", "", "Chrome"),
             inputState,
             InputStateEvidence.Unavailable,
             new InputEvidence(
-                true,
-                false,
+                hasEditableFocus,
+                isReadOnly,
                 hasSelection,
                 new ScreenRect(caretX, 120, 2, 20),
                 null,
-                null),
+                null,
+                issue),
             UiAutomationCaretMethod.TextPattern,
             TextPattern2Status.NotAttempted,
             1);

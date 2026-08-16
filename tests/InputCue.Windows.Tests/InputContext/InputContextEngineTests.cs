@@ -86,6 +86,84 @@ public sealed class InputContextEngineTests
     }
 
     [Fact]
+    public async Task WatchAsyncRefreshesInputStateWhenEditablePositionIsUnknown()
+    {
+        using var runtime = new MutableInputStateRuntime(
+            InputState.Chinese,
+            hasCaret: false);
+        var engine = new InputContextEngine(
+            TimeSpan.FromSeconds(5),
+            ignoreCurrentProcess: false,
+            runtime);
+        using var cancellation = new CancellationTokenSource();
+        await using var enumerator = engine
+            .WatchAsync(cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.Equal(Eligibility.PositionUnknown, enumerator.Current.Snapshot.Eligibility);
+        Assert.True(SpinWait.SpinUntil(
+            () => runtime.FullObservationCount == 4,
+            TimeSpan.FromMilliseconds(400)));
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.Equal(InputState.Chinese, enumerator.Current.Snapshot.InputState);
+
+        runtime.SetInputState(InputState.English);
+        var refreshed = enumerator.MoveNextAsync().AsTask();
+        Assert.True(await refreshed.WaitAsync(TimeSpan.FromMilliseconds(300)));
+        Assert.Equal(InputState.English, enumerator.Current.Snapshot.InputState);
+        Assert.Equal(4, runtime.FullObservationCount);
+        Assert.True(runtime.InputStateRefreshCount >= 1);
+        cancellation.Cancel();
+    }
+
+    [Fact]
+    public async Task WatchAsyncRetriesARecentlyFocusedEditablePosition()
+    {
+        using var runtime = new MutableInputStateRuntime(
+            InputState.English,
+            caretAvailableAfterObservation: 2);
+        var engine = new InputContextEngine(
+            TimeSpan.FromSeconds(5),
+            ignoreCurrentProcess: false,
+            runtime);
+        using var cancellation = new CancellationTokenSource();
+        await using var enumerator = engine
+            .WatchAsync(cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.Equal(Eligibility.PositionUnknown, enumerator.Current.Snapshot.Eligibility);
+
+        Assert.True(await enumerator.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromMilliseconds(300)));
+        Assert.Equal(Eligibility.EditableCaret, enumerator.Current.Snapshot.Eligibility);
+        Assert.Equal(2, runtime.FullObservationCount);
+        cancellation.Cancel();
+    }
+
+    [Fact]
+    public async Task WatchAsyncBoundsPositionRetriesWhenNoCaretAppears()
+    {
+        using var runtime = new MutableInputStateRuntime(
+            InputState.English,
+            hasCaret: false);
+        var engine = new InputContextEngine(
+            TimeSpan.FromSeconds(5),
+            ignoreCurrentProcess: false,
+            runtime);
+        using var cancellation = new CancellationTokenSource();
+        await using var enumerator = engine
+            .WatchAsync(cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+
+        Assert.True(await enumerator.MoveNextAsync());
+        await Task.Delay(TimeSpan.FromMilliseconds(450));
+
+        Assert.Equal(4, runtime.FullObservationCount);
+        cancellation.Cancel();
+    }
+
+    [Fact]
     public async Task WatchAsyncStopsWhenCancellationIsRequested()
     {
         using var runtime = new TestInputContextRuntime();
@@ -213,7 +291,9 @@ public sealed class InputContextEngineTests
 
     private sealed class MutableInputStateRuntime(
         InputState initialState,
-        bool hasEditableFocus = true) :
+        bool hasEditableFocus = true,
+        bool hasCaret = true,
+        int caretAvailableAfterObservation = 1) :
         IInputContextRuntime,
         IDisposable
     {
@@ -232,7 +312,7 @@ public sealed class InputContextEngineTests
 
         public RawInputContextObservation Observe()
         {
-            _ = Interlocked.Increment(ref _fullObservationCount);
+            var observationCount = Interlocked.Increment(ref _fullObservationCount);
             var inputState = (InputState)Volatile.Read(ref _inputState);
             return new RawInputContextObservation(
                 1,
@@ -245,7 +325,11 @@ public sealed class InputContextEngineTests
                     hasEditableFocus,
                     false,
                     false,
-                    hasEditableFocus ? new ScreenRect(100, 120, 2, 20) : null,
+                    hasEditableFocus &&
+                    hasCaret &&
+                    observationCount >= caretAvailableAfterObservation
+                        ? new ScreenRect(100, 120, 2, 20)
+                        : null,
                     null,
                     null),
                 UiAutomationCaretMethod.TextPattern,

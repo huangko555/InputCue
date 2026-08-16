@@ -71,7 +71,7 @@ public sealed class IndicatorSessionTests
     }
 
     [Fact]
-    public void RepeatedEditableSelectionDoesNotExtendDisplayDuration()
+    public void RepeatedEditableSelectionKeepsThePresentedAnchorAndDeadline()
     {
         var movedCaret = new ScreenRect(130, 120, 2, 20);
         var session = new IndicatorSession(Transient);
@@ -89,7 +89,7 @@ public sealed class IndicatorSessionTests
 
         Assert.Equal(IndicatorPhase.Fading, state.Phase);
         Assert.Equal(0.75, state.Opacity, 3);
-        Assert.Equal(movedCaret, state.Anchor);
+        Assert.Equal(Caret, state.Anchor);
     }
 
     [Fact]
@@ -125,6 +125,126 @@ public sealed class IndicatorSessionTests
 
         Assert.Equal(IndicatorPhase.Fading, state.Phase);
         Assert.Equal(0.75, state.Opacity, 3);
+    }
+
+    [Fact]
+    public void TextInputHidesTheVisibleIndicatorImmediately()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            MinimumDisplayDuration = TimeSpan.Zero,
+        });
+        _ = session.Observe(Snapshot(1, Start));
+
+        var state = session.ObserveInputActivity(Start.AddMilliseconds(100));
+
+        Assert.Equal(IndicatorPhase.Hidden, state.Phase);
+        Assert.Equal(IndicatorReasonCode.InputActivityDetected, state.ReasonCode);
+    }
+
+    [Fact]
+    public void TextInputWaitsForTheMinimumDisplayDuration()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            MinimumDisplayDuration = TimeSpan.FromMilliseconds(300),
+        });
+        _ = session.Observe(Snapshot(1, Start));
+
+        var pending = session.ObserveInputActivity(Start.AddMilliseconds(100));
+        var beforeMinimum = session.Advance(Start.AddMilliseconds(299));
+        var atMinimum = session.Advance(Start.AddMilliseconds(300));
+
+        Assert.Equal(IndicatorPhase.Visible, pending.Phase);
+        Assert.Equal(IndicatorPhase.Visible, beforeMinimum.Phase);
+        Assert.Equal(IndicatorPhase.Hidden, atMinimum.Phase);
+        Assert.Equal(IndicatorReasonCode.InputActivityDetected, atMinimum.ReasonCode);
+    }
+
+    [Fact]
+    public void MinimumDisplayDurationStartsWhenTheObservationIsPresented()
+    {
+        var session = new IndicatorSession(Transient);
+        _ = session.Observe(Snapshot(1, Start), Start.AddMilliseconds(500));
+
+        var pending = session.ObserveInputActivity(Start.AddMilliseconds(520));
+        var beforeMinimum = session.Advance(Start.AddMilliseconds(799));
+        var atMinimum = session.Advance(Start.AddMilliseconds(800));
+
+        Assert.Equal(IndicatorPhase.Visible, pending.Phase);
+        Assert.Equal(IndicatorPhase.Visible, beforeMinimum.Phase);
+        Assert.Equal(IndicatorPhase.Hidden, atMinimum.Phase);
+    }
+
+    [Fact]
+    public void RecentInputSuppressesContextReplayFromAChangedGeneration()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            MinimumDisplayDuration = TimeSpan.Zero,
+            ContextReplaySuppressionDuration = TimeSpan.FromMilliseconds(1500),
+        });
+        _ = session.Observe(Snapshot(1, Start));
+        _ = session.ObserveInputActivity(Start.AddMilliseconds(100));
+
+        var state = session.Observe(Snapshot(2, Start.AddMilliseconds(200)));
+
+        Assert.Equal(IndicatorPhase.Hidden, state.Phase);
+        Assert.Equal(IndicatorReasonCode.InputActivityDetected, state.ReasonCode);
+    }
+
+    [Fact]
+    public void InputWhileHiddenRefreshesContextReplaySuppression()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            MinimumDisplayDuration = TimeSpan.Zero,
+            ContextReplaySuppressionDuration = TimeSpan.FromMilliseconds(1500),
+        });
+        _ = session.Observe(Snapshot(1, Start));
+        _ = session.ObserveInputActivity(Start.AddMilliseconds(100));
+        _ = session.ObserveInputActivity(Start.AddMilliseconds(1000));
+
+        var state = session.Observe(Snapshot(2, Start.AddMilliseconds(2000)));
+
+        Assert.Equal(IndicatorPhase.Hidden, state.Phase);
+    }
+
+    [Fact]
+    public void InputStateChangeBypassesContextReplaySuppression()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            MinimumDisplayDuration = TimeSpan.Zero,
+            ContextReplaySuppressionDuration = TimeSpan.FromMilliseconds(1500),
+        });
+        _ = session.Observe(Snapshot(1, Start));
+        _ = session.ObserveInputActivity(Start.AddMilliseconds(100));
+
+        var state = session.Observe(Snapshot(
+            2,
+            Start.AddMilliseconds(200),
+            inputState: InputState.Chinese));
+
+        Assert.Equal(IndicatorPhase.Visible, state.Phase);
+        Assert.Equal(IndicatorReasonCode.InputStateChanged, state.ReasonCode);
+    }
+
+    [Fact]
+    public void ContextReplayIsAllowedAfterSuppressionExpires()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            MinimumDisplayDuration = TimeSpan.Zero,
+            ContextReplaySuppressionDuration = TimeSpan.FromMilliseconds(1500),
+        });
+        _ = session.Observe(Snapshot(1, Start));
+        _ = session.ObserveInputActivity(Start.AddMilliseconds(100));
+
+        var state = session.Observe(Snapshot(2, Start.AddMilliseconds(1600)));
+
+        Assert.Equal(IndicatorPhase.Visible, state.Phase);
+        Assert.Equal(IndicatorReasonCode.ContextEstablished, state.ReasonCode);
     }
 
     [Fact]
@@ -253,6 +373,10 @@ public sealed class IndicatorSessionTests
             new IndicatorSession(Transient with { DisplayDuration = TimeSpan.FromMilliseconds(-1) }));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             new IndicatorSession(Transient with { FadeDuration = TimeSpan.FromMilliseconds(-1) }));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new IndicatorSession(Transient with { MinimumDisplayDuration = TimeSpan.FromMilliseconds(-1) }));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new IndicatorSession(Transient with { ContextReplaySuppressionDuration = TimeSpan.FromMilliseconds(-1) }));
     }
 
     [Theory]

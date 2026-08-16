@@ -13,4 +13,13 @@ internal static class ObservationValidator
         ObservationIdentity initial,
         ObservationIdentity current) =>
         initial == current;
+
+    internal static bool IsNativeFocusCurrent(
+        ObservationIdentity initial,
+        nint foregroundWindow,
+        uint foregroundProcessId,
+        nint focusWindow) =>
+        initial.ForegroundWindow == foregroundWindow &&
+        initial.ForegroundProcessId == foregroundProcessId &&
+        initial.FocusWindow == focusWindow;
 }

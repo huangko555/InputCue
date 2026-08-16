@@ -9,9 +9,11 @@ public sealed class InputContextEngine
 {
     private static readonly TimeSpan CircuitCooldown = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan EventDebounceInterval = TimeSpan.FromMilliseconds(40);
-    private static readonly TimeSpan InputStateRefreshInterval = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan InputStateRefreshInterval = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan PositionRetryInterval = TimeSpan.FromMilliseconds(75);
     private static readonly TimeSpan QueryTimeout = TimeSpan.FromMilliseconds(250);
-    private static readonly TimeSpan DefaultSampleInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan DefaultSampleInterval = TimeSpan.FromSeconds(2);
+    private const int PositionRetryLimit = 3;
     private readonly bool _ignoreCurrentProcess;
     private readonly IInputContextRuntime _runtime;
     private readonly TimeSpan _sampleInterval;
@@ -91,15 +93,12 @@ public sealed class InputContextEngine
             QueryTimeout,
             CircuitCooldown);
         var refreshTarget = RawInputContextObservation.Failure(ProbeIssue.SourceUnavailable, 0);
-        var inputStateQueryRunner = new ObservationQueryRunner(
-            () => _runtime.RefreshInputState(refreshTarget),
-            QueryTimeout,
-            CircuitCooldown);
         ObservationFingerprint? previousFingerprint = null;
         RawInputContextObservation? currentObservation = null;
         InputContextSnapshot? currentSnapshot = null;
         long generation = 0;
         long lastFullObservationAt = 0;
+        var positionRetryCount = 0;
         var needsFullObservation = true;
 
         try
@@ -124,6 +123,7 @@ public sealed class InputContextEngine
                         {
                             generation = checked(generation + 1);
                             previousFingerprint = currentObservation.Fingerprint;
+                            positionRetryCount = 0;
                         }
 
                         currentSnapshot = Classify(currentObservation, generation);
@@ -140,15 +140,33 @@ public sealed class InputContextEngine
                 }
 
                 var canRefreshInputState = currentSnapshot?.Eligibility is
-                    Eligibility.EditableCaret or Eligibility.EditableSelection;
+                    Eligibility.EditableCaret or
+                    Eligibility.EditableSelection or
+                    Eligibility.PositionUnknown;
+                var shouldRetryPosition = currentSnapshot?.Eligibility is Eligibility.PositionUnknown &&
+                    positionRetryCount < PositionRetryLimit;
+                var untilPositionRetry = PositionRetryInterval -
+                    Stopwatch.GetElapsedTime(lastFullObservationAt);
+                if (shouldRetryPosition && untilPositionRetry <= TimeSpan.Zero)
+                {
+                    positionRetryCount++;
+                    needsFullObservation = true;
+                    continue;
+                }
+
                 var waitInterval = canRefreshInputState &&
                     InputStateRefreshInterval < untilFullObservation
                         ? InputStateRefreshInterval
                         : untilFullObservation;
+                if (shouldRetryPosition && untilPositionRetry < waitInterval)
+                {
+                    waitInterval = untilPositionRetry;
+                }
                 var eventRaised = eventSource.WaitForChange(waitInterval, cancellationToken);
                 if (eventRaised)
                 {
                     CoalesceChanges(eventSource, cancellationToken);
+                    positionRetryCount = 0;
                     needsFullObservation = true;
                     continue;
                 }
@@ -159,13 +177,22 @@ public sealed class InputContextEngine
                     continue;
                 }
 
+                if (shouldRetryPosition &&
+                    Stopwatch.GetElapsedTime(lastFullObservationAt) >= PositionRetryInterval)
+                {
+                    positionRetryCount++;
+                    needsFullObservation = true;
+                    continue;
+                }
+
                 if (!canRefreshInputState || currentObservation is null)
                 {
                     continue;
                 }
 
                 refreshTarget = currentObservation;
-                var refreshed = inputStateQueryRunner.Observe(cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                var refreshed = _runtime.RefreshInputState(refreshTarget);
                 if (eventSource.WaitForChange(TimeSpan.Zero, cancellationToken))
                 {
                     CoalesceChanges(eventSource, cancellationToken);

@@ -8,6 +8,7 @@ public enum IndicatorReasonCode
     ContextIneligible,
     InputStateUnknown,
     PositionUnavailable,
+    InputActivityDetected,
     DisplayDurationElapsed,
     FadeCompleted,
 }

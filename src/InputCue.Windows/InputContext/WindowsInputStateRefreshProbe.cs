@@ -75,9 +75,25 @@ internal sealed class WindowsInputStateRefreshProbe
         }
     }
 
-    private static bool IsCurrent(ObservationIdentity expected) =>
-        WindowsObservationIdentity.TryRead(out var current) &&
-        ObservationValidator.IsCurrent(expected, current);
+    private static bool IsCurrent(ObservationIdentity expected)
+    {
+        var foregroundWindow = NativeMethods.GetForegroundWindow();
+        var foregroundThread = NativeMethods.GetWindowThreadProcessId(
+            foregroundWindow,
+            out var foregroundProcessId);
+        if (foregroundThread == 0)
+        {
+            return false;
+        }
+
+        var threadInfo = GuiThreadInfo.Create();
+        return NativeMethods.GetGUIThreadInfo(foregroundThread, ref threadInfo) &&
+            ObservationValidator.IsNativeFocusCurrent(
+                expected,
+                foregroundWindow,
+                foregroundProcessId,
+                threadInfo.FocusWindow);
+    }
 
     private static RawInputContextObservation Failure(ProbeIssue issue, long startedAt) =>
         RawInputContextObservation.Failure(

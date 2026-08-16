@@ -6,17 +6,70 @@ internal static partial class NativeMethods
 {
     internal const uint CoInitMultiThreaded = 0x0;
     internal const uint ClassContextInprocServer = 0x1;
+    internal const uint EventObjectFocus = 0x8005;
+    internal const uint EventSystemForeground = 0x0003;
     internal const int RpcChangedMode = unchecked((int)0x80010106);
     internal const uint ObjectIdCaret = 0xFFFFFFF8;
+    internal const uint PeekMessageNoRemove = 0x0000;
     internal const uint SendMessageTimeoutBlock = 0x0001;
     internal const uint SendMessageTimeoutAbortIfHung = 0x0002;
     internal const uint SendMessageTimeoutErrorOnExit = 0x0020;
+    internal const uint WinEventOutOfContext = 0x0000;
+    internal const uint WmQuit = 0x0012;
     internal const uint WmImeControl = 0x0283;
 
     internal static readonly Guid IAccessibleId = new("618736E0-3C3D-11CF-810C-00AA00389B71");
 
     [LibraryImport("user32.dll")]
     internal static partial nint GetForegroundWindow();
+
+    [LibraryImport("kernel32.dll")]
+    internal static partial uint GetCurrentThreadId();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint SetWinEventHook(
+        uint eventMinimum,
+        uint eventMaximum,
+        nint module,
+        WinEventCallback callback,
+        uint processId,
+        uint threadId,
+        uint flags);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool UnhookWinEvent(nint hook);
+
+    [LibraryImport("user32.dll", EntryPoint = "PostThreadMessageW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool PostThreadMessage(
+        uint threadId,
+        uint message,
+        nuint wParam,
+        nint lParam);
+
+    [LibraryImport("user32.dll", EntryPoint = "PeekMessageW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool PeekMessage(
+        out NativeMessage message,
+        nint window,
+        uint messageFilterMinimum,
+        uint messageFilterMaximum,
+        uint removeMessage);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetMessageW", SetLastError = true)]
+    internal static partial int GetMessage(
+        out NativeMessage message,
+        nint window,
+        uint messageFilterMinimum,
+        uint messageFilterMaximum);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool TranslateMessage(in NativeMessage message);
+
+    [LibraryImport("user32.dll", EntryPoint = "DispatchMessageW")]
+    internal static partial nint DispatchMessage(in NativeMessage message);
 
     [LibraryImport("ole32.dll")]
     internal static partial int CoInitializeEx(nint reserved, uint coInit);
@@ -87,6 +140,27 @@ internal static partial class NativeMethods
         uint objectId,
         ref Guid interfaceId,
         [MarshalAs(UnmanagedType.Interface)] out object accessibleObject);
+}
+
+internal delegate void WinEventCallback(
+    nint hook,
+    uint eventType,
+    nint window,
+    int objectId,
+    int childId,
+    uint eventThreadId,
+    uint eventTimeMilliseconds);
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeMessage
+{
+    internal nint Window;
+    internal uint Message;
+    internal nuint WParam;
+    internal nint LParam;
+    internal uint Time;
+    internal NativePoint Point;
+    internal uint Private;
 }
 
 [StructLayout(LayoutKind.Sequential)]

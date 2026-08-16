@@ -12,8 +12,11 @@ public sealed class IndicatorSession
     private IndicatorViewState _state = IndicatorViewState.Initial;
     private InputContextSnapshot? _lastContext;
     private DateTimeOffset _currentTime = DateTimeOffset.MinValue;
+    private DateTimeOffset? _displayStartedAt;
     private DateTimeOffset? _displayUntil;
     private DateTimeOffset? _fadeUntil;
+    private DateTimeOffset? _lastInputActivityAt;
+    private bool _textActivityPending;
 
     public IndicatorSession(IndicatorSessionOptions? options = null)
     {
@@ -27,7 +30,12 @@ public sealed class IndicatorSession
     /// Applies an observation. Older generations and observations with an earlier timestamp in the
     /// current generation are ignored without changing the current view state.
     /// </summary>
-    public IndicatorViewState Observe(InputContextSnapshot snapshot)
+    public IndicatorViewState Observe(InputContextSnapshot snapshot) =>
+        Observe(snapshot, receivedAt: null);
+
+    public IndicatorViewState Observe(
+        InputContextSnapshot snapshot,
+        DateTimeOffset? receivedAt)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -37,11 +45,14 @@ public sealed class IndicatorSession
         }
 
         var isNewGeneration = _lastContext is null || snapshot.Generation > _lastContext.Generation;
-        var effectiveTime = LaterOf(_currentTime, snapshot.ObservedAt);
+        var effectiveTime = LaterOf(
+            _currentTime,
+            snapshot.ObservedAt,
+            receivedAt ?? DateTimeOffset.MinValue);
         AdvanceCore(effectiveTime);
 
         var previousContext = _lastContext;
-        _lastContext = snapshot;
+        _lastContext = snapshot with { ObservedAt = effectiveTime };
         _currentTime = effectiveTime;
 
         var hiddenReason = GetHiddenReason(snapshot);
@@ -51,16 +62,21 @@ public sealed class IndicatorSession
             return _state;
         }
 
-        var shouldReplay = isNewGeneration ||
+        var inputStateChanged = previousContext is not null &&
+            previousContext.InputState != snapshot.InputState;
+        var contextEstablished = isNewGeneration ||
             previousContext is null ||
-            previousContext.InputState != snapshot.InputState ||
             !IsDisplayEligible(previousContext.Eligibility);
+        var shouldReplay = inputStateChanged || contextEstablished;
+        var suppressContextReplay = contextEstablished &&
+            !inputStateChanged &&
+            IsContextReplaySuppressed(effectiveTime);
 
-        if (shouldReplay)
+        if (shouldReplay && !suppressContextReplay)
         {
             Show(
                 snapshot,
-                previousContext is not null && previousContext.InputState != snapshot.InputState
+                inputStateChanged
                     ? IndicatorReasonCode.InputStateChanged
                     : IndicatorReasonCode.ContextEstablished,
                 effectiveTime);
@@ -72,11 +88,40 @@ public sealed class IndicatorSession
             _state = _state with
             {
                 Generation = snapshot.Generation,
-                InputState = snapshot.InputState,
-                Anchor = snapshot.Anchor,
             };
         }
 
+        return _state;
+    }
+
+    /// <summary>
+    /// Applies an anonymous editing-key activity without recording the key or any resulting text.
+    /// </summary>
+    public IndicatorViewState ObserveInputActivity(DateTimeOffset receivedAt)
+    {
+        if (receivedAt <= _currentTime)
+        {
+            return _state;
+        }
+
+        _currentTime = receivedAt;
+        AdvanceCore(receivedAt);
+        _lastInputActivityAt = receivedAt;
+        if (_options.AlwaysVisible || !_state.IsVisible)
+        {
+            return _state;
+        }
+
+        var minimumDisplayUntil = _displayStartedAt is { } displayStartedAt
+            ? displayStartedAt + _options.MinimumDisplayDuration
+            : receivedAt;
+        if (receivedAt < minimumDisplayUntil)
+        {
+            _textActivityPending = true;
+            return _state;
+        }
+
+        Hide(_state.Generation, IndicatorReasonCode.InputActivityDetected);
         return _state;
     }
 
@@ -132,6 +177,10 @@ public sealed class IndicatorSession
     private static bool IsDisplayEligible(Eligibility eligibility) =>
         eligibility is Eligibility.EditableCaret or Eligibility.EditableSelection;
 
+    private bool IsContextReplaySuppressed(DateTimeOffset now) =>
+        _lastInputActivityAt is { } lastInputActivityAt &&
+        now < lastInputActivityAt + _options.ContextReplaySuppressionDuration;
+
     private void Show(
         InputContextSnapshot snapshot,
         IndicatorReasonCode reasonCode,
@@ -144,6 +193,8 @@ public sealed class IndicatorSession
             snapshot.Anchor,
             1,
             reasonCode);
+        _displayStartedAt = now;
+        _textActivityPending = false;
 
         if (_options.AlwaysVisible)
         {
@@ -152,15 +203,20 @@ public sealed class IndicatorSession
             return;
         }
 
-        _displayUntil = now + _options.DisplayDuration;
+        var displayDuration = _options.DisplayDuration < _options.MinimumDisplayDuration
+            ? _options.MinimumDisplayDuration
+            : _options.DisplayDuration;
+        _displayUntil = now + displayDuration;
         _fadeUntil = _displayUntil + _options.FadeDuration;
         AdvanceCore(now);
     }
 
     private void Hide(long generation, IndicatorReasonCode reasonCode)
     {
+        _displayStartedAt = null;
         _displayUntil = null;
         _fadeUntil = null;
+        _textActivityPending = false;
         _state = IndicatorViewState.Hidden(generation, reasonCode);
     }
 
@@ -168,6 +224,14 @@ public sealed class IndicatorSession
     {
         if (_options.AlwaysVisible || !_state.IsVisible || _displayUntil is null || _fadeUntil is null)
         {
+            return;
+        }
+
+        if (_textActivityPending &&
+            _displayStartedAt is { } displayStartedAt &&
+            now >= displayStartedAt + _options.MinimumDisplayDuration)
+        {
+            Hide(_state.Generation, IndicatorReasonCode.InputActivityDetected);
             return;
         }
 
@@ -192,6 +256,11 @@ public sealed class IndicatorSession
         };
     }
 
-    private static DateTimeOffset LaterOf(DateTimeOffset first, DateTimeOffset second) =>
-        first >= second ? first : second;
+    private static DateTimeOffset LaterOf(
+        DateTimeOffset first,
+        DateTimeOffset second,
+        DateTimeOffset third) =>
+        first >= second
+            ? first >= third ? first : third
+            : second >= third ? second : third;
 }

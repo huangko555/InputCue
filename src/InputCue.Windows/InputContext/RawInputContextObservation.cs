@@ -33,19 +33,11 @@ internal sealed record RawInputContextObservation(
         ForegroundWindow,
         FocusWindow,
         AutomationElementIdentity,
-        Target.ProcessId,
-        Evidence.HasEditableFocus,
-        Evidence.IsReadOnly,
-        Evidence.HasSelection,
-        Evidence.Issue);
+        Target.ProcessId);
 }
 
 internal sealed record ObservationFingerprint(
     nint ForegroundWindow,
     nint FocusWindow,
     int AutomationElementIdentity,
-    int ProcessId,
-    bool HasEditableFocus,
-    bool? IsReadOnly,
-    bool? HasSelection,
-    ProbeIssue Issue);
+    int ProcessId);

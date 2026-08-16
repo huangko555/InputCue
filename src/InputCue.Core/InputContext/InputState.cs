@@ -5,5 +5,6 @@ public enum InputState
     Unknown,
     Chinese,
     English,
+    EnglishUs,
     CapsLock,
 }

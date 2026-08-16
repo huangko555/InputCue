@@ -6,6 +6,7 @@ namespace InputCue.Windows.InputContext;
 internal sealed class WindowsInputStateProbe
 {
     private const ushort ChinesePrimaryLanguage = 0x0004;
+    private const ushort EnglishUnitedStatesLanguage = 0x0409;
     private const uint ImeConversionNative = 0x0001;
 
     private readonly IInputStateFactsReader _factsReader;
@@ -41,12 +42,17 @@ internal sealed class WindowsInputStateProbe
             return InputState.Unknown;
         }
 
+        var languageId = (ushort)(facts.KeyboardLayout.ToInt64() & 0xFFFF);
+        if (languageId == EnglishUnitedStatesLanguage)
+        {
+            return InputState.EnglishUs;
+        }
+
         if (!facts.IsIme)
         {
             return InputState.English;
         }
 
-        var languageId = (ushort)(facts.KeyboardLayout.ToInt64() & 0xFFFF);
         if ((languageId & 0x03FF) != ChinesePrimaryLanguage)
         {
             return InputState.Unknown;

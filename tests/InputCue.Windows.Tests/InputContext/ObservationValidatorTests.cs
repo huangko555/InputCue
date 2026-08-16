@@ -26,4 +26,15 @@ public sealed class ObservationValidatorTests
             initial,
             initial with { AutomationIdentity = 50 }));
     }
+
+    [Fact]
+    public void NativeFocusValidationIgnoresAutomationOnlyIdentityChanges()
+    {
+        var initial = new ObservationIdentity(1, 2, 3, 4, 5);
+
+        Assert.True(ObservationValidator.IsNativeFocusCurrent(initial, 1, 2, 3));
+        Assert.False(ObservationValidator.IsNativeFocusCurrent(initial, 10, 2, 3));
+        Assert.False(ObservationValidator.IsNativeFocusCurrent(initial, 1, 20, 3));
+        Assert.False(ObservationValidator.IsNativeFocusCurrent(initial, 1, 2, 30));
+    }
 }
