@@ -4,6 +4,9 @@ namespace InputCue.Windows.Interop;
 
 internal static partial class NativeMethods
 {
+    internal const uint CoInitMultiThreaded = 0x0;
+    internal const uint ClassContextInprocServer = 0x1;
+    internal const int RpcChangedMode = unchecked((int)0x80010106);
     internal const uint ObjectIdCaret = 0xFFFFFFF8;
     internal const uint SendMessageTimeoutBlock = 0x0001;
     internal const uint SendMessageTimeoutAbortIfHung = 0x0002;
@@ -14,6 +17,20 @@ internal static partial class NativeMethods
 
     [LibraryImport("user32.dll")]
     internal static partial nint GetForegroundWindow();
+
+    [LibraryImport("ole32.dll")]
+    internal static partial int CoInitializeEx(nint reserved, uint coInit);
+
+    [LibraryImport("ole32.dll")]
+    internal static partial void CoUninitialize();
+
+    [LibraryImport("ole32.dll")]
+    internal static partial int CoCreateInstance(
+        in Guid classId,
+        nint outer,
+        uint context,
+        in Guid interfaceId,
+        out nint instance);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     internal static partial uint GetWindowThreadProcessId(nint window, out uint processId);

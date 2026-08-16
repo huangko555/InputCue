@@ -66,6 +66,19 @@ public sealed class InputContextClassifierTests
     }
 
     [Fact]
+    public void ClassifyKeepsKnownInputStateWhenEditablePositionIsUnknown()
+    {
+        var evidence = Evidence(editable: true, readOnly: false, selection: false);
+
+        var result = InputContextClassifier.Classify(1, ObservedAt, InputState.Chinese, evidence);
+
+        Assert.Equal(Eligibility.PositionUnknown, result.Eligibility);
+        Assert.Equal(InputState.Chinese, result.InputState);
+        Assert.Null(result.Anchor);
+        Assert.Equal(ReasonCode.PositionUnavailable, result.ReasonCode);
+    }
+
+    [Fact]
     public void ClassifyUsesWin32CaretOnlyAsDegradedAnchor()
     {
         var evidence = Evidence(editable: true, readOnly: false, selection: false, win32Caret: Caret);

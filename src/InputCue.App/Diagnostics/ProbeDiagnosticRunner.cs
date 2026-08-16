@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -148,6 +149,82 @@ internal sealed class ProbeDiagnosticRunner
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             _shutdown(5);
+        }
+    }
+
+    internal async Task RunTsfProbeAsync(string outputPath)
+    {
+        var samples = await Task.Run(() =>
+        {
+            var results = new List<TsfProbeSample>();
+            var deadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 15;
+            while (Stopwatch.GetTimestamp() < deadline)
+            {
+                var result = TsfCaretProbe.Observe();
+                results.Add(TsfProbeSample.From(result));
+                Thread.Sleep(300);
+            }
+
+            return results;
+        });
+
+        try
+        {
+            var fullPath = Path.GetFullPath(outputPath);
+            _ = Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            var json = JsonSerializer.Serialize(
+                new TsfProbeTrace(DateTimeOffset.UtcNow, samples),
+                TraceJsonOptions);
+            await File.WriteAllTextAsync(fullPath, json);
+            _shutdown(0);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _shutdown(5);
+        }
+    }
+
+    private sealed record TsfProbeTrace(DateTimeOffset CapturedAt, IReadOnlyList<TsfProbeSample> Samples);
+
+    private sealed record TsfProbeSample(
+        uint ForegroundProcessId,
+        string ForegroundProcessName,
+        string Status,
+        int HResult,
+        double? X,
+        double? Y,
+        double? Width,
+        double? Height,
+        bool? Clipped,
+        double DurationMilliseconds)
+    {
+        internal static TsfProbeSample From(TsfProbeResult result) => new(
+            result.ForegroundProcessId,
+            ProcessName(result.ForegroundProcessId),
+            result.Status,
+            result.HResult,
+            result.TextExtent is { } rectangle ? rectangle.Left : null,
+            result.TextExtent is { } rectangleY ? rectangleY.Top : null,
+            result.TextExtent is { } rectangleWidth ? rectangleWidth.Right - rectangleWidth.Left : null,
+            result.TextExtent is { } rectangleHeight ? rectangleHeight.Bottom - rectangleHeight.Top : null,
+            result.Clipped,
+            result.DurationMilliseconds);
+
+        private static string ProcessName(uint processId)
+        {
+            if (processId == 0)
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                return Process.GetProcessById((int)processId).ProcessName ?? string.Empty;
+            }
+            catch (ArgumentException)
+            {
+                return string.Empty;
+            }
         }
     }
 

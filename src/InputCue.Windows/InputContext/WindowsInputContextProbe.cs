@@ -82,7 +82,12 @@ internal sealed class WindowsInputContextProbe : IDisposable
                      current.ClassName,
                      current.FrameworkId,
                      current.ControlType,
-                     valuePattern is not null));
+                     valuePattern is not null) ||
+                 AppProfileCatalog.SupportsWritableWindowsTerminalSurface(
+                     processName,
+                     current.ClassName,
+                     current.FrameworkId,
+                     current.ControlType));
             var textObservation = ObserveText(textPattern, includeSelectionCaret: hasEditableFocus);
             var shouldProbeCaret = hasEditableFocus;
             var textPattern2 = shouldProbeCaret
@@ -111,10 +116,7 @@ internal sealed class WindowsInputContextProbe : IDisposable
             var msaaCaret = shouldProbeCaret
                 ? MsaaCaret(focusWindow == 0 ? foregroundWindow : focusWindow)
                 : null;
-            var hasCaret = uiAutomationCaret is { IsUsable: true } ||
-                win32Caret is { IsUsable: true } ||
-                msaaCaret is { IsUsable: true };
-            var inputState = hasEditableFocus && hasCaret
+            var inputState = hasEditableFocus
                 ? _inputStateProbe.Observe(focusWindow == 0 ? foregroundWindow : focusWindow)
                 : InputStateObservation.Unknown;
 

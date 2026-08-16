@@ -34,4 +34,40 @@ public sealed class AppProfileCatalogTests
             ControlType.Group,
             hasValuePattern));
     }
+
+    [Fact]
+    public void WindowsTerminalSurfaceRequiresTheRecordedTextShape()
+    {
+        Assert.True(AppProfileCatalog.SupportsWritableWindowsTerminalSurface(
+            "WindowsTerminal",
+            "TermControl",
+            "XAML",
+            ControlType.Text));
+    }
+
+    [Theory]
+    [InlineData("other", "TermControl", "XAML")]
+    [InlineData("WindowsTerminal", "OtherControl", "XAML")]
+    [InlineData("WindowsTerminal", "TermControl", "Win32")]
+    public void WindowsTerminalSurfaceRejectsNearMisses(
+        string processName,
+        string className,
+        string frameworkId)
+    {
+        Assert.False(AppProfileCatalog.SupportsWritableWindowsTerminalSurface(
+            processName,
+            className,
+            frameworkId,
+            ControlType.Text));
+    }
+
+    [Fact]
+    public void WindowsTerminalSurfaceRejectsNonTextControl()
+    {
+        Assert.False(AppProfileCatalog.SupportsWritableWindowsTerminalSurface(
+            "WindowsTerminal",
+            "TermControl",
+            "XAML",
+            ControlType.Group));
+    }
 }

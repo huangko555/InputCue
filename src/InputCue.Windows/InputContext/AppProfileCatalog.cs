@@ -15,4 +15,14 @@ internal static class AppProfileCatalog
         string.Equals(frameworkId, "Qt", StringComparison.Ordinal) &&
         controlType == ControlType.Group &&
         hasValuePattern;
+
+    internal static bool SupportsWritableWindowsTerminalSurface(
+        string? processName,
+        string? className,
+        string? frameworkId,
+        ControlType? controlType) =>
+        string.Equals(processName, "WindowsTerminal", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(className, "TermControl", StringComparison.Ordinal) &&
+        string.Equals(frameworkId, "XAML", StringComparison.Ordinal) &&
+        controlType == ControlType.Text;
 }

@@ -38,6 +38,21 @@ public partial class App : Application
             return;
         }
 
+        if (e.Args.Contains("--probe-tsf", StringComparer.Ordinal))
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            var outputPath = ReadOption(e.Args, "--probe-tsf");
+            if (outputPath is null)
+            {
+                Shutdown(8);
+                return;
+            }
+
+            var runner = new ProbeDiagnosticRunner(Dispatcher, Shutdown);
+            _ = runner.RunTsfProbeAsync(outputPath);
+            return;
+        }
+
         new MainWindow().Show();
     }
 

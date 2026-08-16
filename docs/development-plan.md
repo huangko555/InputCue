@@ -165,6 +165,7 @@
 
 ### 3A.3 WPS 文档
 
+- V1 暂缓：保留现有安全降级和只读 TSF 实验，不继续引入鼠标定位、注入或 Hook；
 - 当前进度：已完成 3 次连续 20 秒脱敏 Trace；修复 WPS 顶层窗口、UIA 焦点元素和 `hwndFocus` 属于同一可执行文件的多进程身份校验；
 - WPS 正文稳定暴露为 `wps.exe + Qt + KxWpsView + ControlType.Group + ValuePattern(IsReadOnly=false)`，已纳入窄范围应用画像；
 - 该画像当前可确认 `HasEditableFocus=true`，但 UIA TextPattern、Win32 Caret、MSAA Caret、IMM 组合点均为空，最终状态为 `PositionUnknown`，提示层必须继续隐藏；
@@ -172,6 +173,8 @@
 
 ### 3A.4 Windows Terminal
 
+- 当前进度：已纳入窄范围画像并完成真实前台复测；`WindowsTerminal + XAML + TermControl + ControlType.Text + IsReadOnly=false` 可确认 `HasEditableFocus=true`，但 20 条连续采样均为 `PositionUnknown`，`TextPattern2=PatternUnavailable`，Win32/MSAA Caret 为空；
+- V1 暂缓：微软 Terminal 源码虽有通用 UIA TextPattern/Selection provider，但当前版本没有向外部探针提供可用插入光标矩形；不使用鼠标位置、输出区域或旧坐标降级；
 - 只针对 `FrameworkId=XAML + ClassName=TermControl` 评估可编辑资格；
 - 不把所有 `ControlType.Text` 当作输入控件；
 - 若 Terminal 没有稳定 Caret 来源，记录为 `PositionUnknown` 并保持隐藏。
