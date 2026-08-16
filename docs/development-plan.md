@@ -21,7 +21,7 @@
 
 已确认但尚未解决：
 
-- WPS 正文点击后画面上有光标，但跨进程观察经常在发布前变成 `ConflictingEvidence`；
+- WPS 正文点击后画面上有光标，但它由 WPS 自绘，UIA、Win32 Caret、MSAA Caret 和 IMM 组合点均未提供可用锚点；
 - Windows Terminal 使用 `XAML + TermControl + ControlType.Text`，当前策略会判定为 `NoEditableFocus`；
 - 可编辑控件存在非折叠选区时目前隐藏，地址栏全选等场景尚未支持提示。
 
@@ -165,10 +165,10 @@
 
 ### 3A.3 WPS 文档
 
-- 记录连续两次以上点击正文后的完整观察链；
-- 确认 WPS 稳定的文档宿主/窗口身份，避免使用每次变化的嵌套 UIA RuntimeId；
-- 仅在当前 WPS 进程和文档宿主匹配时尝试 MSAA/Win32 Caret；
-- 无法稳定确认焦点或锚点时默认隐藏，不放宽全局 `ConflictingEvidence` 规则。
+- 当前进度：已完成 3 次连续 20 秒脱敏 Trace；修复 WPS 顶层窗口、UIA 焦点元素和 `hwndFocus` 属于同一可执行文件的多进程身份校验；
+- WPS 正文稳定暴露为 `wps.exe + Qt + KxWpsView + ControlType.Group + ValuePattern(IsReadOnly=false)`，已纳入窄范围应用画像；
+- 该画像当前可确认 `HasEditableFocus=true`，但 UIA TextPattern、Win32 Caret、MSAA Caret、IMM 组合点均为空，最终状态为 `PositionUnknown`，提示层必须继续隐藏；
+- 不引入远程线程 Hook、注入 DLL 或鼠标坐标伪装 Caret；若后续无法找到可审计锚点，将 WPS 记录为 V1 不支持。
 
 ### 3A.4 Windows Terminal
 

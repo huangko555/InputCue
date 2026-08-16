@@ -6,5 +6,9 @@ public enum ProbeIssue
     TimedOut,
     InsufficientPrivilege,
     ConflictingEvidence,
+    FocusedProcessMismatch,
+    FocusWindowProcessMismatch,
+    ObservationIdentityChanged,
+    InputStateEvidenceChanged,
     SourceUnavailable,
 }

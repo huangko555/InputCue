@@ -142,6 +142,10 @@ public sealed class InputContextClassifierTests
     [InlineData(ProbeIssue.TimedOut, ReasonCode.TimedOut)]
     [InlineData(ProbeIssue.InsufficientPrivilege, ReasonCode.InsufficientPrivilege)]
     [InlineData(ProbeIssue.ConflictingEvidence, ReasonCode.ConflictingEvidence)]
+    [InlineData(ProbeIssue.FocusedProcessMismatch, ReasonCode.ConflictingEvidence)]
+    [InlineData(ProbeIssue.FocusWindowProcessMismatch, ReasonCode.ConflictingEvidence)]
+    [InlineData(ProbeIssue.ObservationIdentityChanged, ReasonCode.ConflictingEvidence)]
+    [InlineData(ProbeIssue.InputStateEvidenceChanged, ReasonCode.ConflictingEvidence)]
     [InlineData(ProbeIssue.SourceUnavailable, ReasonCode.SourceUnavailable)]
     public void ClassifyHidesProbeFailures(ProbeIssue issue, ReasonCode reasonCode)
     {

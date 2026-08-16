@@ -154,6 +154,10 @@ public static class InputContextClassifier
         ProbeIssue.TimedOut => ReasonCode.TimedOut,
         ProbeIssue.InsufficientPrivilege => ReasonCode.InsufficientPrivilege,
         ProbeIssue.ConflictingEvidence => ReasonCode.ConflictingEvidence,
+        ProbeIssue.FocusedProcessMismatch => ReasonCode.ConflictingEvidence,
+        ProbeIssue.FocusWindowProcessMismatch => ReasonCode.ConflictingEvidence,
+        ProbeIssue.ObservationIdentityChanged => ReasonCode.ConflictingEvidence,
+        ProbeIssue.InputStateEvidenceChanged => ReasonCode.ConflictingEvidence,
         ProbeIssue.SourceUnavailable => ReasonCode.SourceUnavailable,
         _ => ReasonCode.None,
     };

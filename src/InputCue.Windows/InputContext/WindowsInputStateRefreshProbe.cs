@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
 using InputCue.Core.InputContext;
+using InputCue.Windows.Interop;
 
 namespace InputCue.Windows.InputContext;
 
@@ -14,12 +15,20 @@ internal sealed class WindowsInputStateRefreshProbe
         var startedAt = Stopwatch.GetTimestamp();
         if (current.ForegroundWindow == 0 || current.Target.ProcessId <= 0)
         {
-            return Failure(ProbeIssue.ConflictingEvidence, startedAt);
+            return Failure(ProbeIssue.ObservationIdentityChanged, startedAt);
+        }
+
+        _ = NativeMethods.GetWindowThreadProcessId(
+            current.ForegroundWindow,
+            out var foregroundProcessId);
+        if (foregroundProcessId == 0)
+        {
+            return Failure(ProbeIssue.ObservationIdentityChanged, startedAt);
         }
 
         var expected = new ObservationIdentity(
             current.ForegroundWindow,
-            (uint)current.Target.ProcessId,
+            foregroundProcessId,
             current.FocusWindow,
             current.Target.ProcessId,
             current.AutomationElementIdentity);
@@ -28,16 +37,21 @@ internal sealed class WindowsInputStateRefreshProbe
         {
             if (!IsCurrent(expected))
             {
-                return Failure(ProbeIssue.ConflictingEvidence, startedAt);
+                return Failure(ProbeIssue.ObservationIdentityChanged, startedAt);
             }
 
             var targetWindow = current.FocusWindow == 0
                 ? current.ForegroundWindow
                 : current.FocusWindow;
             var inputState = _inputStateProbe.Observe(targetWindow);
-            if (!IsCurrent(expected) || !_inputStateProbe.IsCurrent(inputState))
+            if (!IsCurrent(expected))
             {
-                return Failure(ProbeIssue.ConflictingEvidence, startedAt);
+                return Failure(ProbeIssue.ObservationIdentityChanged, startedAt);
+            }
+
+            if (!_inputStateProbe.IsCurrent(inputState))
+            {
+                return Failure(ProbeIssue.InputStateEvidenceChanged, startedAt);
             }
 
             return current with

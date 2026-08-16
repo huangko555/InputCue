@@ -11,6 +11,7 @@ namespace InputCue.Windows.InputContext;
 internal sealed class WindowsInputContextProbe : IDisposable
 {
     private readonly NativeTextPattern2CaretProbe _textPattern2CaretProbe = new();
+    private readonly ProcessExecutableIdentity _processExecutableIdentity = new();
     private readonly WindowsInputStateProbe _inputStateProbe = new();
 
     internal RawInputContextObservation Observe()
@@ -40,12 +41,12 @@ internal sealed class WindowsInputContextProbe : IDisposable
             var focusWindow = threadInfo.FocusWindow;
             var automationIdentity = WindowsObservationIdentity.AutomationIdentity(focusedElement);
 
-            if (focusedProcessId <= 0 || focusedProcessId != foregroundProcessId)
+            if (!_processExecutableIdentity.IsCompatible(foregroundProcessId, focusedProcessId))
             {
                 return Failure(
                     foregroundWindow,
                     focusWindow,
-                    ProbeIssue.ConflictingEvidence,
+                    ProbeIssue.FocusedProcessMismatch,
                     startedAt,
                     focusedProcessId);
             }
@@ -53,12 +54,14 @@ internal sealed class WindowsInputContextProbe : IDisposable
             if (focusWindow != 0)
             {
                 _ = NativeMethods.GetWindowThreadProcessId(focusWindow, out var focusWindowProcessId);
-                if (focusWindowProcessId != foregroundProcessId)
+                if (!_processExecutableIdentity.IsCompatible(
+                    foregroundProcessId,
+                    (int)focusWindowProcessId))
                 {
                     return Failure(
                         foregroundWindow,
                         focusWindow,
-                        ProbeIssue.ConflictingEvidence,
+                        ProbeIssue.FocusWindowProcessMismatch,
                         startedAt,
                         focusedProcessId);
                 }
@@ -67,12 +70,19 @@ internal sealed class WindowsInputContextProbe : IDisposable
             var textPattern = GetPattern<TextPattern>(focusedElement, TextPattern.Pattern);
             var valuePattern = GetPattern<ValuePattern>(focusedElement, ValuePattern.Pattern);
             var isReadOnly = ReadOnlyState(textPattern, valuePattern);
+            var processName = ProcessName(focusedProcessId);
             var hasEditableFocus = current.HasKeyboardFocus &&
                 current.IsEnabled &&
                 isReadOnly is false &&
-                EditableControlPolicy.SupportsTextEditing(
-                    current.ControlType,
-                    valuePattern is not null);
+                (EditableControlPolicy.SupportsTextEditing(
+                     current.ControlType,
+                     valuePattern is not null) ||
+                 AppProfileCatalog.SupportsWritableWpsDocumentSurface(
+                     processName,
+                     current.ClassName,
+                     current.FrameworkId,
+                     current.ControlType,
+                     valuePattern is not null));
             var textObservation = ObserveText(textPattern, includeSelectionCaret: hasEditableFocus);
             var shouldProbeCaret = hasEditableFocus;
             var textPattern2 = shouldProbeCaret
@@ -110,7 +120,7 @@ internal sealed class WindowsInputContextProbe : IDisposable
 
             var target = new TargetDescriptor(
                 focusedProcessId,
-                ProcessName(focusedProcessId),
+                processName,
                 current.ControlType?.ProgrammaticName ?? string.Empty,
                 current.ClassName ?? string.Empty,
                 current.FrameworkId ?? string.Empty);
@@ -133,7 +143,7 @@ internal sealed class WindowsInputContextProbe : IDisposable
                 return Failure(
                     foregroundWindow,
                     focusWindow,
-                    ProbeIssue.ConflictingEvidence,
+                    ProbeIssue.ObservationIdentityChanged,
                     startedAt,
                     focusedProcessId);
             }
@@ -143,7 +153,7 @@ internal sealed class WindowsInputContextProbe : IDisposable
                 return Failure(
                     foregroundWindow,
                     focusWindow,
-                    ProbeIssue.ConflictingEvidence,
+                    ProbeIssue.InputStateEvidenceChanged,
                     startedAt,
                     focusedProcessId);
             }
