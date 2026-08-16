@@ -7,7 +7,6 @@
         MinWidth="620"
         MinHeight="480"
         WindowStartupLocation="CenterScreen"
-        Loaded="OnLoaded"
         Closed="OnClosed">
     <Grid Margin="24">
         <Grid.RowDefinitions>
@@ -24,13 +23,21 @@
             <TextBlock Margin="0,8,0,0"
                        Foreground="#666666"
                        Text="切换到其他应用进行输入、拖选或悬停测试；返回本窗口后会保留最后一次外部观察。" />
-            <CheckBox x:Name="IndicatorEnabledCheckBox"
-                      Margin="0,12,0,0"
-                      HorizontalAlignment="Left"
-                      IsChecked="True"
-                      Checked="OnIndicatorEnabledChanged"
-                      Unchecked="OnIndicatorEnabledChanged"
-                      Content="启用提示" />
+            <StackPanel Margin="0,12,0,0"
+                        Orientation="Horizontal">
+                <CheckBox x:Name="IndicatorEnabledCheckBox"
+                          VerticalAlignment="Center"
+                          IsChecked="True"
+                          Checked="OnIndicatorEnabledChanged"
+                          Unchecked="OnIndicatorEnabledChanged"
+                          Content="启用提示" />
+                <CheckBox x:Name="StartWithWindowsCheckBox"
+                          Margin="22,0,0,0"
+                          VerticalAlignment="Center"
+                          Checked="OnStartWithWindowsChanged"
+                          Unchecked="OnStartWithWindowsChanged"
+                          Content="开机自动启动" />
+            </StackPanel>
             <StackPanel Margin="0,10,0,0"
                         Orientation="Horizontal">
                 <TextBlock VerticalAlignment="Center"

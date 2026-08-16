@@ -5,6 +5,7 @@ using System.Windows;
 using InputCue.App.Diagnostics;
 using InputCue.Core.Settings;
 using InputCue.Windows.SingleInstance;
+using InputCue.Windows.Startup;
 using Forms = System.Windows.Forms;
 
 namespace InputCue.App;
@@ -84,13 +85,23 @@ public partial class App : System.Windows.Application
             "InputCue",
             "settings.json");
         var settingsStore = new InputCueSettingsStore(settingsPath);
-        var mainWindow = new MainWindow(settingsStore.Load(), settingsStore.TrySave);
+        var executablePath = Environment.ProcessPath;
+        var mainWindow = new MainWindow(
+            settingsStore.Load(),
+            settingsStore.TrySave,
+            StartupRegistration.IsEnabled(),
+            enabled => executablePath is not null &&
+                StartupRegistration.TrySetEnabled(enabled, executablePath));
         MainWindow = mainWindow;
         mainWindow.Closing += OnMainWindowClosing;
         mainWindow.WatchingStateChanged += OnWatchingStateChanged;
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         InitializeTrayIcon(mainWindow);
-        mainWindow.Show();
+        mainWindow.Start();
+        if (!e.Args.Contains("--background", StringComparer.Ordinal))
+        {
+            mainWindow.Show();
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)

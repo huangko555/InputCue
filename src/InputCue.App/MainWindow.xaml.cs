@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using InputCue.Core.Indicator;
 using InputCue.Core.InputContext;
@@ -32,12 +33,15 @@ public partial class MainWindow : Window, IDisposable
     private readonly DispatcherTimer _indicatorTimer;
     private readonly RawKeyboardInputMonitor _keyboardInputMonitor = new();
     private readonly Func<InputCueSettings, bool> _saveSettings;
+    private readonly Func<bool, bool> _setStartWithWindows;
     private InputContextDiagnostic? _lastBaseDiagnostic;
     private CancellationTokenSource? _watchCancellation;
     private bool _capsLockEnabled;
     private bool _disposed;
     private bool _indicatorEnabled;
     private bool _settingsInitialized;
+    private bool _startupSettingInitialized;
+    private bool _started;
     private int _displayDurationMilliseconds;
     private int _minimumDisplayDurationMilliseconds;
 
@@ -47,11 +51,15 @@ public partial class MainWindow : Window, IDisposable
 
     public MainWindow(
         InputCueSettings settings,
-        Func<InputCueSettings, bool> saveSettings)
+        Func<InputCueSettings, bool> saveSettings,
+        bool startWithWindows,
+        Func<bool, bool> setStartWithWindows)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(saveSettings);
+        ArgumentNullException.ThrowIfNull(setStartWithWindows);
         _saveSettings = saveSettings;
+        _setStartWithWindows = setStartWithWindows;
         InitializeComponent();
         _indicatorEnabled = settings.IndicatorEnabled;
         _displayDurationMilliseconds = settings.DisplayDurationMilliseconds;
@@ -70,11 +78,20 @@ public partial class MainWindow : Window, IDisposable
             Dispatcher);
         _keyboardInputMonitor.EditingKeyPressed += OnEditingKeyPressed;
         IndicatorEnabledCheckBox.IsChecked = _indicatorEnabled;
+        StartWithWindowsCheckBox.IsChecked = startWithWindows;
         _settingsInitialized = true;
+        _startupSettingInitialized = true;
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    internal void Start()
     {
+        if (_started)
+        {
+            return;
+        }
+
+        _started = true;
+        _ = new WindowInteropHelper(this).EnsureHandle();
         _ = _keyboardInputMonitor.Attach(this);
         StartWatching();
     }
@@ -142,6 +159,26 @@ public partial class MainWindow : Window, IDisposable
         {
             StatusText.Text = "提示已启用，但设置未能保存。";
         }
+    }
+
+    private void OnStartWithWindowsChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_startupSettingInitialized)
+        {
+            return;
+        }
+
+        var requested = StartWithWindowsCheckBox.IsChecked is true;
+        if (_setStartWithWindows(requested))
+        {
+            StatusText.Text = requested ? "已启用开机自动启动。" : "已关闭开机自动启动。";
+            return;
+        }
+
+        _startupSettingInitialized = false;
+        StartWithWindowsCheckBox.IsChecked = !requested;
+        _startupSettingInitialized = true;
+        StatusText.Text = "开机启动设置未能保存。";
     }
 
     private void OnTimingSettingsClick(object sender, RoutedEventArgs e)
