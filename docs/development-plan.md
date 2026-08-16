@@ -179,6 +179,14 @@
 - 不把所有 `ControlType.Text` 当作输入控件；
 - 若 Terminal 没有稳定 Caret 来源，记录为 `PositionUnknown` 并保持隐藏。
 
+### 3A.5 WebView2 / ProseMirror
+
+- 当前进度：已用 Bitty Note 1.3.9 完成真实前台采集，连续 10 条观察均为 `EditableCaret / EditableCaretConfirmed`；UIA TextPattern 与 MSAA 返回一致的 `2×20` Caret；
+- WebView2 的前台窗口属于宿主进程，UIA 焦点属于两级子渲染进程；只有焦点进程沿系统进程父链可追溯到当前前台进程时才接受，不能仅凭 `msedgewebview2.exe` 名称放宽身份校验；
+- ProseMirror 画像仅接受 `FrameworkId=Chrome + ControlType.Group + ProseMirror + ProseMirror-focused + TextPattern`，外层仍要求键盘焦点和明确的 `IsReadOnly=false`；
+- 普通网页 Group、未聚焦或只读 ProseMirror、无 TextPattern 的近似控件继续保持隐藏；
+- 已保存脱敏黄金 Trace，并为宿主父链方向和画像近似项建立回归测试。
+
 ### 3A 验收门槛
 
 - 每个缺口至少有一个正例和一个负例 Trace；

@@ -70,4 +70,41 @@ public sealed class AppProfileCatalogTests
             "XAML",
             ControlType.Group));
     }
+
+    [Fact]
+    public void ProseMirrorSurfaceRequiresTheRecordedFocusedTextShape()
+    {
+        Assert.True(AppProfileCatalog.SupportsWritableProseMirrorSurface(
+            "ProseMirror ProseMirror-focused",
+            "Chrome",
+            ControlType.Group,
+            hasTextPattern: true));
+    }
+
+    [Theory]
+    [InlineData("ProseMirror", "Chrome", true)]
+    [InlineData("ProseMirror-focused", "Chrome", true)]
+    [InlineData("ProseMirror ProseMirror-focused", "Other", true)]
+    [InlineData("ProseMirror ProseMirror-focused", "Chrome", false)]
+    public void ProseMirrorSurfaceRejectsNearMisses(
+        string className,
+        string frameworkId,
+        bool hasTextPattern)
+    {
+        Assert.False(AppProfileCatalog.SupportsWritableProseMirrorSurface(
+            className,
+            frameworkId,
+            ControlType.Group,
+            hasTextPattern));
+    }
+
+    [Fact]
+    public void ProseMirrorSurfaceRejectsNonGroupControl()
+    {
+        Assert.False(AppProfileCatalog.SupportsWritableProseMirrorSurface(
+            "ProseMirror ProseMirror-focused",
+            "Chrome",
+            ControlType.Document,
+            hasTextPattern: true));
+    }
 }

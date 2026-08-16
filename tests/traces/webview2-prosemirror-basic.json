@@ -1,0 +1,63 @@
+{
+  "SchemaVersion": 1,
+  "ExportedAt": "1970-01-01T00:00:00+00:00",
+  "Observations": [
+    {
+      "Snapshot": {
+        "Generation": 1,
+        "ObservedAt": "1970-01-01T00:00:00+00:00",
+        "Eligibility": "EditableCaret",
+        "InputState": "Chinese",
+        "Anchor": {
+          "X": 100,
+          "Y": 120,
+          "Width": 2,
+          "Height": 20,
+          "IsUsable": true
+        },
+        "AnchorSource": "UiAutomation",
+        "EvidenceGrade": "Confirmed",
+        "ReasonCode": "EditableCaretConfirmed"
+      },
+      "Target": {
+        "ProcessId": 0,
+        "ProcessName": "msedgewebview2",
+        "ControlType": "ControlType.Group",
+        "ClassName": "ProseMirror ProseMirror-focused",
+        "FrameworkId": "Chrome"
+      },
+      "HasEditableFocus": true,
+      "IsReadOnly": false,
+      "HasSelection": false,
+      "UiAutomationCaret": {
+        "X": 100,
+        "Y": 120,
+        "Width": 2,
+        "Height": 20,
+        "IsUsable": true
+      },
+      "UiAutomationCaretMethod": "TextPattern",
+      "TextPattern2Status": "PatternUnavailable",
+      "Win32Caret": null,
+      "MsaaCaret": {
+        "X": 100,
+        "Y": 120,
+        "Width": 2,
+        "Height": 20,
+        "IsUsable": true
+      },
+      "Issue": "None",
+      "DurationMilliseconds": 0,
+      "InputStateEvidence": {
+        "LanguageId": 2052,
+        "IsIme": true,
+        "HasImeContext": false,
+        "ImeOpen": null,
+        "ConversionMode": null,
+        "HasDefaultImeWindow": true,
+        "ImeWindowOpenStatus": 1,
+        "ImeWindowConversionMode": 1
+      }
+    }
+  ]
+}

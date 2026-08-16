@@ -87,7 +87,12 @@ internal sealed class WindowsInputContextProbe : IDisposable
                      processName,
                      current.ClassName,
                      current.FrameworkId,
-                     current.ControlType));
+                     current.ControlType) ||
+                 AppProfileCatalog.SupportsWritableProseMirrorSurface(
+                     current.ClassName,
+                     current.FrameworkId,
+                     current.ControlType,
+                     textPattern is not null));
             var textObservation = ObserveText(textPattern, includeSelectionCaret: hasEditableFocus);
             var shouldProbeCaret = hasEditableFocus;
             var textPattern2 = shouldProbeCaret

@@ -6,16 +6,26 @@ namespace InputCue.Windows.InputContext;
 internal sealed class ProcessExecutableIdentity
 {
     private readonly Func<int, string?> _readExecutablePath;
+    private readonly Func<int, int, bool> _isDescendantOf;
 
     internal ProcessExecutableIdentity()
-        : this(ReadExecutablePath)
+        : this(ReadExecutablePath, ProcessAncestry.IsDescendantOf)
     {
     }
 
     internal ProcessExecutableIdentity(Func<int, string?> readExecutablePath)
+        : this(readExecutablePath, (_, _) => false)
+    {
+    }
+
+    internal ProcessExecutableIdentity(
+        Func<int, string?> readExecutablePath,
+        Func<int, int, bool> isDescendantOf)
     {
         ArgumentNullException.ThrowIfNull(readExecutablePath);
+        ArgumentNullException.ThrowIfNull(isDescendantOf);
         _readExecutablePath = readExecutablePath;
+        _isDescendantOf = isDescendantOf;
     }
 
     internal bool IsCompatible(uint foregroundProcessId, int focusedProcessId)
@@ -37,9 +47,11 @@ internal sealed class ProcessExecutableIdentity
 
         var foregroundPath = _readExecutablePath((int)foregroundProcessId);
         var focusedPath = _readExecutablePath(focusedProcessId);
-        return !string.IsNullOrWhiteSpace(foregroundPath) &&
+        var hasSameExecutable = !string.IsNullOrWhiteSpace(foregroundPath) &&
             !string.IsNullOrWhiteSpace(focusedPath) &&
             string.Equals(foregroundPath, focusedPath, StringComparison.OrdinalIgnoreCase);
+        return hasSameExecutable ||
+            _isDescendantOf(focusedProcessId, (int)foregroundProcessId);
     }
 
     private static string? ReadExecutablePath(int processId)

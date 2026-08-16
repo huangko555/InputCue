@@ -25,4 +25,19 @@ internal static class AppProfileCatalog
         string.Equals(className, "TermControl", StringComparison.Ordinal) &&
         string.Equals(frameworkId, "XAML", StringComparison.Ordinal) &&
         controlType == ControlType.Text;
+
+    internal static bool SupportsWritableProseMirrorSurface(
+        string? className,
+        string? frameworkId,
+        ControlType? controlType,
+        bool hasTextPattern) =>
+        string.Equals(frameworkId, "Chrome", StringComparison.Ordinal) &&
+        controlType == ControlType.Group &&
+        hasTextPattern &&
+        ContainsClassToken(className, "ProseMirror") &&
+        ContainsClassToken(className, "ProseMirror-focused");
+
+    private static bool ContainsClassToken(string? className, string token) =>
+        className?.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Contains(token, StringComparer.Ordinal) is true;
 }

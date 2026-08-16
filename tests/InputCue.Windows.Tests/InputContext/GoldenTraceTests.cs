@@ -79,6 +79,19 @@ public sealed class GoldenTraceTests
         Assert.Equal(trace.Observations[^2].Target, trace.Observations[^1].Target);
     }
 
+    [Fact]
+    public void WebView2ProseMirrorTracePreservesEditableCaret()
+    {
+        var trace = ReadTrace("webview2-prosemirror-basic.json");
+
+        var snapshot = Assert.Single(InputContextTraceReplay.Reclassify(trace));
+
+        Assert.Equal(Eligibility.EditableCaret, snapshot.Eligibility);
+        Assert.Equal(AnchorSource.UiAutomation, snapshot.AnchorSource);
+        Assert.NotNull(snapshot.Anchor);
+        Assert.Equal("msedgewebview2", Assert.Single(trace.Observations).Target.ProcessName);
+    }
+
     private static InputContextTrace ReadTrace(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "traces", fileName);

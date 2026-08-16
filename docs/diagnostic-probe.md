@@ -110,3 +110,4 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 - 默认 IME 窗口查询使用 25ms 短超时，并启用挂起和窗口退出保护；消息失败不会伪装成英文状态。
 - 诊断历史会合并连续且语义完全相同的观察，只保留最新时间和耗时；Generation、输入状态或任一 IME 证据变化都会保留为独立记录。
 - 当前支持一个受限的中文 IME 画像候选：中文语言布局的 `IME_CMODE_NATIVE` 表示中文，未设置表示英文；直接 IMM 与默认 IME 窗口的开关/模式证据冲突时保持 `Unknown`。这不是对所有 IME 的兼容承诺，仍需按应用和输入法版本扩充实机兼容矩阵；技术依据见 `windows-input-state-research.md`。
+- WebView2 桌面应用允许 UIA 焦点位于前台宿主的后代进程，但必须由系统进程父链证明归属；不同宿主的同名 `msedgewebview2.exe` 不能互相兼容。已确认的 ProseMirror 可编辑画像要求 Chrome UIA 框架、聚焦类标记、TextPattern 和明确的可写状态。

@@ -26,6 +26,21 @@ internal static partial class NativeMethods
     [LibraryImport("kernel32.dll")]
     internal static partial uint GetCurrentThreadId();
 
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial nint CreateToolhelp32Snapshot(uint flags, uint processId);
+
+    [DllImport("kernel32.dll", EntryPoint = "Process32FirstW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool Process32First(nint snapshot, ref ProcessEntry32 entry);
+
+    [DllImport("kernel32.dll", EntryPoint = "Process32NextW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool Process32Next(nint snapshot, ref ProcessEntry32 entry);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool CloseHandle(nint handle);
+
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern nint SetWinEventHook(
         uint eventMinimum,
@@ -161,6 +176,29 @@ internal struct NativeMessage
     internal uint Time;
     internal NativePoint Point;
     internal uint Private;
+}
+
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+internal struct ProcessEntry32
+{
+    internal uint Size;
+    internal uint UsageCount;
+    internal uint ProcessId;
+    internal nuint DefaultHeapId;
+    internal uint ModuleId;
+    internal uint ThreadCount;
+    internal uint ParentProcessId;
+    internal int PriorityClassBase;
+    internal uint Flags;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+    internal string ExecutableFile;
+
+    internal static ProcessEntry32 Create() => new()
+    {
+        Size = (uint)Marshal.SizeOf<ProcessEntry32>(),
+        ExecutableFile = string.Empty,
+    };
 }
 
 [StructLayout(LayoutKind.Sequential)]
