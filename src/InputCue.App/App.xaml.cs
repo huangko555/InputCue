@@ -1,10 +1,14 @@
 using System.Windows;
 using InputCue.App.Diagnostics;
+using InputCue.Windows.SingleInstance;
 
 namespace InputCue.App;
 
 public partial class App : Application
 {
+    private const string UiInstanceName = "InputCue.UI.v1";
+    private SingleInstanceCoordinator? _singleInstance;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -53,7 +57,47 @@ public partial class App : Application
             return;
         }
 
-        new MainWindow().Show();
+        _singleInstance = SingleInstanceCoordinator.TryAcquire(
+            UiInstanceName,
+            RequestMainWindowActivation);
+        if (_singleInstance is null)
+        {
+            Shutdown(0);
+            return;
+        }
+
+        MainWindow = new MainWindow();
+        MainWindow.Show();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _singleInstance?.Dispose();
+        _singleInstance = null;
+        base.OnExit(e);
+    }
+
+    private void RequestMainWindowActivation()
+    {
+        _ = Dispatcher.BeginInvoke(() =>
+        {
+            if (MainWindow is not { } window)
+            {
+                return;
+            }
+
+            if (window.WindowState == WindowState.Minimized)
+            {
+                window.WindowState = WindowState.Normal;
+            }
+
+            if (!window.IsVisible)
+            {
+                window.Show();
+            }
+
+            _ = window.Activate();
+        });
     }
 
     private static string? ReadOption(string[] arguments, string option)
