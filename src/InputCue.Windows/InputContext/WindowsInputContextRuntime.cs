@@ -16,4 +16,7 @@ internal sealed class WindowsInputContextRuntime : IInputContextRuntime
         using var probe = new WindowsInputContextProbe();
         return probe.Observe();
     }
+
+    public RawInputContextObservation RefreshInputState(RawInputContextObservation current) =>
+        new WindowsInputStateRefreshProbe().Refresh(current);
 }

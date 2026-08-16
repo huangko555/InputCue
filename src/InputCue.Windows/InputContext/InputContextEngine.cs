@@ -9,6 +9,7 @@ public sealed class InputContextEngine
 {
     private static readonly TimeSpan CircuitCooldown = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan EventDebounceInterval = TimeSpan.FromMilliseconds(40);
+    private static readonly TimeSpan InputStateRefreshInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan QueryTimeout = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan DefaultSampleInterval = TimeSpan.FromSeconds(1);
     private readonly bool _ignoreCurrentProcess;
@@ -89,52 +90,102 @@ public sealed class InputContextEngine
             _runtime.Observe,
             QueryTimeout,
             CircuitCooldown);
+        var refreshTarget = RawInputContextObservation.Failure(ProbeIssue.SourceUnavailable, 0);
+        var inputStateQueryRunner = new ObservationQueryRunner(
+            () => _runtime.RefreshInputState(refreshTarget),
+            QueryTimeout,
+            CircuitCooldown);
         ObservationFingerprint? previousFingerprint = null;
+        RawInputContextObservation? currentObservation = null;
+        InputContextSnapshot? currentSnapshot = null;
         long generation = 0;
+        long lastFullObservationAt = 0;
+        var needsFullObservation = true;
 
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                var observation = queryRunner.Observe(cancellationToken);
-                if (_ignoreCurrentProcess && observation.Target.ProcessId == Environment.ProcessId)
+                if (needsFullObservation)
                 {
-                    previousFingerprint = observation.Fingerprint;
-                }
-                else
-                {
-                    if (observation.Fingerprint != previousFingerprint)
+                    currentObservation = queryRunner.Observe(cancellationToken);
+                    lastFullObservationAt = Stopwatch.GetTimestamp();
+                    needsFullObservation = false;
+
+                    if (_ignoreCurrentProcess &&
+                        currentObservation.Target.ProcessId == Environment.ProcessId)
                     {
-                        generation = checked(generation + 1);
-                        previousFingerprint = observation.Fingerprint;
+                        previousFingerprint = currentObservation.Fingerprint;
+                        currentSnapshot = null;
                     }
+                    else
+                    {
+                        if (currentObservation.Fingerprint != previousFingerprint)
+                        {
+                            generation = checked(generation + 1);
+                            previousFingerprint = currentObservation.Fingerprint;
+                        }
 
-                    var snapshot = InputContextClassifier.Classify(
-                        generation,
-                        DateTimeOffset.UtcNow,
-                        observation.InputState,
-                        observation.Evidence);
-                    var diagnostic = new InputContextDiagnostic(
-                        snapshot,
-                        observation.Target,
-                        observation.Evidence.HasEditableFocus,
-                        observation.Evidence.IsReadOnly,
-                        observation.Evidence.HasSelection,
-                        observation.Evidence.UiAutomationCaret,
-                        observation.UiAutomationCaretMethod,
-                        observation.TextPattern2Status,
-                        observation.Evidence.Win32Caret,
-                        observation.Evidence.MsaaCaret,
-                        observation.Evidence.Issue,
-                        observation.DurationMilliseconds,
-                        observation.InputStateEvidence);
-                    _ = writer.TryWrite(diagnostic);
+                        currentSnapshot = Classify(currentObservation, generation);
+                        _ = writer.TryWrite(CreateDiagnostic(currentObservation, currentSnapshot));
+                    }
                 }
 
-                var eventRaised = eventSource.WaitForChange(_sampleInterval, cancellationToken);
+                var untilFullObservation = _sampleInterval -
+                    Stopwatch.GetElapsedTime(lastFullObservationAt);
+                if (untilFullObservation <= TimeSpan.Zero)
+                {
+                    needsFullObservation = true;
+                    continue;
+                }
+
+                var canRefreshInputState = currentSnapshot?.Eligibility is
+                    Eligibility.EditableCaret or Eligibility.EditableSelection;
+                var waitInterval = canRefreshInputState &&
+                    InputStateRefreshInterval < untilFullObservation
+                        ? InputStateRefreshInterval
+                        : untilFullObservation;
+                var eventRaised = eventSource.WaitForChange(waitInterval, cancellationToken);
                 if (eventRaised)
                 {
                     CoalesceChanges(eventSource, cancellationToken);
+                    needsFullObservation = true;
+                    continue;
+                }
+
+                if (Stopwatch.GetElapsedTime(lastFullObservationAt) >= _sampleInterval)
+                {
+                    needsFullObservation = true;
+                    continue;
+                }
+
+                if (!canRefreshInputState || currentObservation is null)
+                {
+                    continue;
+                }
+
+                refreshTarget = currentObservation;
+                var refreshed = inputStateQueryRunner.Observe(cancellationToken);
+                if (eventSource.WaitForChange(TimeSpan.Zero, cancellationToken))
+                {
+                    CoalesceChanges(eventSource, cancellationToken);
+                    needsFullObservation = true;
+                    continue;
+                }
+
+                if (refreshed.Fingerprint != currentObservation.Fingerprint)
+                {
+                    needsFullObservation = true;
+                    continue;
+                }
+
+                var stateChanged = refreshed.InputState != currentObservation.InputState ||
+                    refreshed.InputStateEvidence != currentObservation.InputStateEvidence;
+                currentObservation = refreshed;
+                if (stateChanged)
+                {
+                    currentSnapshot = Classify(currentObservation, generation);
+                    _ = writer.TryWrite(CreateDiagnostic(currentObservation, currentSnapshot));
                 }
             }
         }
@@ -146,6 +197,33 @@ public sealed class InputContextEngine
             writer.TryComplete();
         }
     }
+
+    private static InputContextSnapshot Classify(
+        RawInputContextObservation observation,
+        long generation) =>
+        InputContextClassifier.Classify(
+            generation,
+            DateTimeOffset.UtcNow,
+            observation.InputState,
+            observation.Evidence);
+
+    private static InputContextDiagnostic CreateDiagnostic(
+        RawInputContextObservation observation,
+        InputContextSnapshot snapshot) =>
+        new(
+            snapshot,
+            observation.Target,
+            observation.Evidence.HasEditableFocus,
+            observation.Evidence.IsReadOnly,
+            observation.Evidence.HasSelection,
+            observation.Evidence.UiAutomationCaret,
+            observation.UiAutomationCaretMethod,
+            observation.TextPattern2Status,
+            observation.Evidence.Win32Caret,
+            observation.Evidence.MsaaCaret,
+            observation.Evidence.Issue,
+            observation.DurationMilliseconds,
+            observation.InputStateEvidence);
 
     private static void CoalesceChanges(
         IInputContextEventSource eventSource,

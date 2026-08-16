@@ -38,7 +38,7 @@ internal sealed class WindowsInputContextProbe : IDisposable
             var current = focusedElement.Current;
             var focusedProcessId = current.ProcessId;
             var focusWindow = threadInfo.FocusWindow;
-            var automationIdentity = AutomationIdentity(focusedElement);
+            var automationIdentity = WindowsObservationIdentity.AutomationIdentity(focusedElement);
 
             if (focusedProcessId <= 0 || focusedProcessId != foregroundProcessId)
             {
@@ -272,47 +272,10 @@ internal sealed class WindowsInputContextProbe : IDisposable
         rectangle.Width <= Math.Max(8, rectangle.Height / 2) &&
         rectangle.Height <= 256;
 
-    private static int AutomationIdentity(AutomationElement element)
-    {
-        var hash = new HashCode();
-        foreach (var value in element.GetRuntimeId())
-        {
-            hash.Add(value);
-        }
-
-        return hash.ToHashCode();
-    }
-
     private static bool IsStillCurrent(ObservationIdentity initial)
     {
-        var foregroundWindow = NativeMethods.GetForegroundWindow();
-        var foregroundThread = NativeMethods.GetWindowThreadProcessId(
-            foregroundWindow,
-            out var foregroundProcessId);
-        if (foregroundThread == 0)
-        {
-            return false;
-        }
-
-        var finalThreadInfo = GuiThreadInfo.Create();
-        if (!NativeMethods.GetGUIThreadInfo(foregroundThread, ref finalThreadInfo))
-        {
-            return false;
-        }
-
-        var finalFocusedElement = AutomationElement.FocusedElement;
-        if (finalFocusedElement is null)
-        {
-            return false;
-        }
-
-        var current = new ObservationIdentity(
-            foregroundWindow,
-            foregroundProcessId,
-            finalThreadInfo.FocusWindow,
-            finalFocusedElement.Current.ProcessId,
-            AutomationIdentity(finalFocusedElement));
-        return ObservationValidator.IsCurrent(initial, current);
+        return WindowsObservationIdentity.TryRead(out var current) &&
+            ObservationValidator.IsCurrent(initial, current);
     }
 
     private static ScreenRect? FirstRectangle(System.Windows.Rect[] rectangles)
