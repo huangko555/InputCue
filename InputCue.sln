@@ -19,6 +19,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InputCue.Core.Tests", "test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InputCue.Windows.Tests", "tests\InputCue.Windows.Tests\InputCue.Windows.Tests.csproj", "{FEC9F596-BEE9-4A3D-9F4F-7D7BCD3CCA7B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InputCue.Overlay.Tests", "tests\InputCue.Overlay.Tests\InputCue.Overlay.Tests.csproj", "{B465234F-EAAB-442B-B1C4-E0F0D288C444}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -101,6 +103,18 @@ Global
 		{FEC9F596-BEE9-4A3D-9F4F-7D7BCD3CCA7B}.Release|x64.Build.0 = Release|Any CPU
 		{FEC9F596-BEE9-4A3D-9F4F-7D7BCD3CCA7B}.Release|x86.ActiveCfg = Release|Any CPU
 		{FEC9F596-BEE9-4A3D-9F4F-7D7BCD3CCA7B}.Release|x86.Build.0 = Release|Any CPU
+		{B465234F-EAAB-442B-B1C4-E0F0D288C444}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B465234F-EAAB-442B-B1C4-E0F0D288C444}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B465234F-EAAB-442B-B1C4-E0F0D288C444}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B465234F-EAAB-442B-B1C4-E0F0D288C444}.Debug|x64.Build.0 = Debug|Any CPU
+		{B465234F-EAAB-442B-B1C4-E0F0D288C444}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B465234F-EAAB-442B-B1C4-E0F0D288C444}.Debug|x86.Build.0 = Debug|Any CPU
+		{B465234F-EAAB-442B-B1C4-E0F0D288C444}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B465234F-EAAB-442B-B1C4-E0F0D288C444}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B465234F-EAAB-442B-B1C4-E0F0D288C444}.Release|x64.ActiveCfg = Release|Any CPU
+		{B465234F-EAAB-442B-B1C4-E0F0D288C444}.Release|x64.Build.0 = Release|Any CPU
+		{B465234F-EAAB-442B-B1C4-E0F0D288C444}.Release|x86.ActiveCfg = Release|Any CPU
+		{B465234F-EAAB-442B-B1C4-E0F0D288C444}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -112,5 +126,6 @@ Global
 		{F7499B07-BC71-4445-B3E5-1A053D50A333} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{E70A0FC6-AA59-4C87-8BBC-9EB18361DBDF} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{FEC9F596-BEE9-4A3D-9F4F-7D7BCD3CCA7B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{B465234F-EAAB-442B-B1C4-E0F0D288C444} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal
