@@ -36,6 +36,10 @@ public partial class MainWindow : Window, IDisposable
     private bool _disposed;
     private bool _indicatorEnabled = true;
 
+    public event EventHandler? WatchingStateChanged;
+
+    public bool IsWatching => _watchCancellation is not null;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -78,6 +82,11 @@ public partial class MainWindow : Window, IDisposable
     private void OnClosed(object? sender, EventArgs e) => Dispose();
 
     private void OnPauseClick(object sender, RoutedEventArgs e)
+    {
+        ToggleWatching();
+    }
+
+    public void ToggleWatching()
     {
         if (_watchCancellation is null)
         {
@@ -166,6 +175,7 @@ public partial class MainWindow : Window, IDisposable
         _watchCancellation = new CancellationTokenSource();
         PauseButton.Content = "暂停";
         StatusText.Text = "正在监听。请切换到其他应用测试，InputCue 自身不会成为观察目标。";
+        WatchingStateChanged?.Invoke(this, EventArgs.Empty);
         _ = WatchAsync(_watchCancellation.Token);
     }
 
@@ -179,6 +189,7 @@ public partial class MainWindow : Window, IDisposable
         _indicatorTimer.Stop();
         PauseButton.Content = "继续";
         StatusText.Text = "诊断探针已暂停。";
+        WatchingStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private async Task WatchAsync(CancellationToken cancellationToken)
@@ -201,6 +212,7 @@ public partial class MainWindow : Window, IDisposable
                 PauseButton.Content = "继续";
                 _watchCancellation?.Dispose();
                 _watchCancellation = null;
+                WatchingStateChanged?.Invoke(this, EventArgs.Empty);
             });
         }
     }

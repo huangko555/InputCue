@@ -6,6 +6,11 @@
     <ProjectReference Include="..\InputCue.Overlay\InputCue.Overlay.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <OutputType>WinExe</OutputType>
@@ -13,6 +18,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>InputCue</AssemblyName>
     <RootNamespace>InputCue.App</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
     <UseWPF>true</UseWPF>
   </PropertyGroup>
 
