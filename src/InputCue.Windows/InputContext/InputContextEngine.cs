@@ -9,6 +9,7 @@ public sealed class InputContextEngine
 {
     private static readonly TimeSpan CircuitCooldown = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan EventDebounceInterval = TimeSpan.FromMilliseconds(40);
+    private static readonly TimeSpan MinimumEventObservationInterval = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan InputStateRefreshInterval = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan PositionRetryInterval = TimeSpan.FromMilliseconds(75);
     private static readonly TimeSpan QueryTimeout = TimeSpan.FromMilliseconds(250);
@@ -166,6 +167,7 @@ public sealed class InputContextEngine
                 if (eventRaised)
                 {
                     CoalesceChanges(eventSource, cancellationToken);
+                    WaitForEventObservationBudget(lastFullObservationAt, cancellationToken);
                     positionRetryCount = 0;
                     needsFullObservation = true;
                     continue;
@@ -265,6 +267,23 @@ public sealed class InputContextEngine
             {
                 return;
             }
+        }
+    }
+
+    private static void WaitForEventObservationBudget(
+        long lastFullObservationAt,
+        CancellationToken cancellationToken)
+    {
+        var remaining = MinimumEventObservationInterval -
+            Stopwatch.GetElapsedTime(lastFullObservationAt);
+        if (remaining <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        if (cancellationToken.WaitHandle.WaitOne(remaining))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
         }
     }
 

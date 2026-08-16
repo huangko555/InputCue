@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using InputCue.Core.InputContext;
 using InputCue.Windows.InputContext;
 
@@ -211,6 +212,36 @@ public sealed class InputContextEngineTests
     }
 
     [Fact]
+    public async Task WatchAsyncBoundsFullObservationsDuringAnEventStorm()
+    {
+        using var runtime = new TestInputContextRuntime();
+        var engine = new InputContextEngine(
+            TimeSpan.FromSeconds(5),
+            ignoreCurrentProcess: false,
+            runtime);
+        using var cancellation = new CancellationTokenSource();
+        await using var enumerator = engine
+            .WatchAsync(cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+        Assert.True(await enumerator.MoveNextAsync());
+
+        var storm = Task.Run(() =>
+        {
+            var startedAt = Stopwatch.GetTimestamp();
+            while (Stopwatch.GetElapsedTime(startedAt) < TimeSpan.FromMilliseconds(360))
+            {
+                runtime.SignalChange();
+                Thread.Sleep(2);
+            }
+        });
+        await storm;
+        await Task.Delay(TimeSpan.FromMilliseconds(250));
+
+        Assert.InRange(runtime.ObservationCount, 2, 5);
+        cancellation.Cancel();
+    }
+
+    [Fact]
     public async Task WatchAsyncKeepsOnlyTheLatestObservationForSlowConsumers()
     {
         using var runtime = new TestInputContextRuntime();
@@ -252,6 +283,8 @@ public sealed class InputContextEngineTests
         }
 
         internal ManualResetEventSlim ChangeWasObserved => _changeWasObserved;
+
+        internal int ObservationCount => Volatile.Read(ref _observationCount);
 
         public IInputContextEventSource CreateEventSource() =>
             new TestEventSource(_signal, _changeWasObserved);
