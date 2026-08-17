@@ -1,3 +1,4 @@
+using System.Windows;
 using InputCue.Core.InputContext;
 
 namespace InputCue.Overlay.Tests;
@@ -21,5 +22,13 @@ public sealed class LightBadgeGlyphsTests
     public void UnknownStateHasNoGlyph()
     {
         Assert.True(LightBadgeGlyphs.For(InputState.Unknown).Bounds.IsEmpty);
+    }
+
+    [Fact]
+    public void OverlappingChineseStrokesRemainFilled()
+    {
+        var geometry = LightBadgeGlyphs.For(InputState.Chinese);
+
+        Assert.True(geometry.FillContains(new Point(19, 26)));
     }
 }

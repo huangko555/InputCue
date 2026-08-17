@@ -30,14 +30,16 @@ internal static class LightBadgeGlyphs
 
     private static Geometry Create(string data)
     {
-        var geometry = Geometry.Parse(data);
+        // SVG uses the non-zero winding rule by default. WPF otherwise uses
+        // EvenOdd for parsed paths, which turns overlapping strokes into holes.
+        var geometry = Geometry.Parse($"F1 {data}");
         geometry.Freeze();
         return geometry;
     }
 
     private static GeometryGroup CreateGroup(params string[] paths)
     {
-        var group = new GeometryGroup();
+        var group = new GeometryGroup { FillRule = FillRule.Nonzero };
         foreach (var path in paths)
         {
             group.Children.Add(Create(path));

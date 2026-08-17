@@ -37,6 +37,7 @@ public partial class IndicatorOverlayWindow : Window
     private IndicatorPlacement _placement = IndicatorPlacement.Right;
     private int _horizontalOffsetDip;
     private int _verticalOffsetDip;
+    private int _lightBadgeSizeDip = InputCueSettings.DefaultLightBadgeSizeDip;
 
     internal IndicatorOverlayWindow()
     {
@@ -85,6 +86,7 @@ public partial class IndicatorOverlayWindow : Window
         _placement = placement;
         _horizontalOffsetDip = horizontalOffsetDip;
         _verticalOffsetDip = verticalOffsetDip;
+        _lightBadgeSizeDip = lightBadgeSizeDip;
         ConfigureVisuals(indicatorSizeDip, lightBadgeSizeDip);
         _positionedGeneration = null;
     }
@@ -107,6 +109,11 @@ public partial class IndicatorOverlayWindow : Window
             _ => Brushes.Transparent,
         };
         LightBadgeGlyph.Data = LightBadgeGlyphs.For(state.InputState);
+        var glyphInset = state.InputState == InputState.EnglishUs
+            ? LightBadgeBaseInsetDip * 0.7
+            : LightBadgeBaseInsetDip;
+        LightBadgeGlyphViewbox.Margin = new Thickness(glyphInset *
+            (_lightBadgeSizeDip / LightBadgeBaseSizeDip));
         Opacity = state.Opacity;
 
         var shouldReposition = OverlayRenderPolicy.ShouldReposition(
