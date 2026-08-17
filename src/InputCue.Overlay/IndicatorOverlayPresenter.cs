@@ -1,4 +1,5 @@
 using InputCue.Core.Indicator;
+using InputCue.Core.Settings;
 
 namespace InputCue.Overlay;
 
@@ -6,6 +7,20 @@ public sealed class IndicatorOverlayPresenter : IDisposable
 {
     private readonly IndicatorOverlayWindow _window = new();
     private bool _disposed;
+
+    public void Configure(
+        IndicatorPlacement placement,
+        int horizontalOffsetDip,
+        int verticalOffsetDip,
+        int indicatorSizeDip)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _window.Configure(
+            placement,
+            horizontalOffsetDip,
+            verticalOffsetDip,
+            indicatorSizeDip);
+    }
 
     public void Update(IndicatorViewState state)
     {

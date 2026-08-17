@@ -4,6 +4,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using InputCue.Core.Indicator;
 using InputCue.Core.InputContext;
+using InputCue.Core.Settings;
 
 namespace InputCue.Overlay;
 
@@ -17,6 +18,7 @@ public partial class IndicatorOverlayWindow : Window
     private const uint NoSizePosition = 0x0001;
     private const uint ShowWindowPosition = 0x0040;
     private const int AnchorGapDip = 6;
+    private const int WindowPaddingDip = 6;
     private const uint MonitorDefaultToNearest = 0x00000002;
 
     private static readonly SolidColorBrush ChineseBrush = FrozenBrush("#E5534B");
@@ -26,10 +28,49 @@ public partial class IndicatorOverlayWindow : Window
 
     private nint _windowHandle;
     private long? _positionedGeneration;
+    private IndicatorPlacement _placement = IndicatorPlacement.Right;
+    private int _horizontalOffsetDip;
+    private int _verticalOffsetDip;
 
     internal IndicatorOverlayWindow()
     {
         InitializeComponent();
+    }
+
+    internal void Configure(
+        IndicatorPlacement placement,
+        int horizontalOffsetDip,
+        int verticalOffsetDip,
+        int indicatorSizeDip)
+    {
+        if (!Enum.IsDefined(placement))
+        {
+            throw new ArgumentOutOfRangeException(nameof(placement));
+        }
+
+        if (horizontalOffsetDip is < InputCueSettings.MinimumOffsetDip or > InputCueSettings.MaximumOffsetDip)
+        {
+            throw new ArgumentOutOfRangeException(nameof(horizontalOffsetDip));
+        }
+
+        if (verticalOffsetDip is < InputCueSettings.MinimumOffsetDip or > InputCueSettings.MaximumOffsetDip)
+        {
+            throw new ArgumentOutOfRangeException(nameof(verticalOffsetDip));
+        }
+
+        if (indicatorSizeDip is < InputCueSettings.MinimumIndicatorSizeDip or > InputCueSettings.MaximumIndicatorSizeDip)
+        {
+            throw new ArgumentOutOfRangeException(nameof(indicatorSizeDip));
+        }
+
+        _placement = placement;
+        _horizontalOffsetDip = horizontalOffsetDip;
+        _verticalOffsetDip = verticalOffsetDip;
+        IndicatorDot.Width = indicatorSizeDip;
+        IndicatorDot.Height = indicatorSizeDip;
+        Width = indicatorSizeDip + WindowPaddingDip;
+        Height = indicatorSizeDip + WindowPaddingDip;
+        _positionedGeneration = null;
     }
 
     internal void Render(IndicatorViewState state)
@@ -102,7 +143,10 @@ public partial class IndicatorOverlayWindow : Window
             anchor,
             monitorInfo.WorkArea.ToPixelRect(),
             overlaySize,
-            OverlayPlacement.ScaleDipToPixels(AnchorGapDip, dpi));
+            OverlayPlacement.ScaleDipToPixels(AnchorGapDip, dpi),
+            _placement,
+            OverlayPlacement.ScaleDipToPixels(_horizontalOffsetDip, dpi),
+            OverlayPlacement.ScaleDipToPixels(_verticalOffsetDip, dpi));
         _ = SetWindowPos(
             _windowHandle,
             -1,

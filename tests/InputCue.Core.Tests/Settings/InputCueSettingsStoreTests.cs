@@ -23,7 +23,14 @@ public sealed class InputCueSettingsStoreTests
         var path = Path.Combine(directory.Path, "settings.json");
         var store = new InputCueSettingsStore(path);
         var first = new InputCueSettings(false, 800, 250);
-        var second = new InputCueSettings(true, 1200, 400);
+        var second = new InputCueSettings(
+            true,
+            1200,
+            400,
+            IndicatorPlacement.BottomLeft,
+            HorizontalOffsetDip: -8,
+            VerticalOffsetDip: 5,
+            IndicatorSizeDip: 18);
 
         Assert.True(store.TrySave(first));
         Assert.True(store.TrySave(second));
@@ -31,6 +38,34 @@ public sealed class InputCueSettingsStoreTests
         Assert.Equal(second, store.Load());
         Assert.DoesNotContain("IsValid", File.ReadAllText(path), StringComparison.Ordinal);
         Assert.False(File.Exists(path + ".tmp"));
+    }
+
+    [Fact]
+    public void ExistingSettingsGainPositionDefaultsWithoutLosingTimingValues()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        File.WriteAllText(
+            path,
+            """
+            {
+              "IndicatorEnabled": false,
+              "DisplayDurationMilliseconds": 725,
+              "MinimumDisplayDurationMilliseconds": 225
+            }
+            """,
+            Encoding.UTF8);
+        var store = new InputCueSettingsStore(path);
+
+        var settings = store.Load();
+
+        Assert.False(settings.IndicatorEnabled);
+        Assert.Equal(725, settings.DisplayDurationMilliseconds);
+        Assert.Equal(225, settings.MinimumDisplayDurationMilliseconds);
+        Assert.Equal(IndicatorPlacement.Right, settings.Placement);
+        Assert.Equal(0, settings.HorizontalOffsetDip);
+        Assert.Equal(0, settings.VerticalOffsetDip);
+        Assert.Equal(InputCueSettings.DefaultIndicatorSizeDip, settings.IndicatorSizeDip);
     }
 
     [Theory]
@@ -57,6 +92,35 @@ public sealed class InputCueSettingsStoreTests
         var store = new InputCueSettingsStore(path);
 
         var saved = store.TrySave(new InputCueSettings(true, 60001, 300));
+
+        Assert.False(saved);
+        Assert.False(File.Exists(path));
+    }
+
+    [Theory]
+    [InlineData(IndicatorPlacement.Right, -41, 0, 12)]
+    [InlineData(IndicatorPlacement.Right, 0, 41, 12)]
+    [InlineData(IndicatorPlacement.Right, 0, 0, 5)]
+    [InlineData(IndicatorPlacement.Right, 0, 0, 33)]
+    [InlineData((IndicatorPlacement)99, 0, 0, 12)]
+    public void InvalidPositionSettingsAreNotWritten(
+        IndicatorPlacement placement,
+        int horizontalOffsetDip,
+        int verticalOffsetDip,
+        int indicatorSizeDip)
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var store = new InputCueSettingsStore(path);
+
+        var saved = store.TrySave(new InputCueSettings(
+            true,
+            1000,
+            300,
+            placement,
+            horizontalOffsetDip,
+            verticalOffsetDip,
+            indicatorSizeDip));
 
         Assert.False(saved);
         Assert.False(File.Exists(path));

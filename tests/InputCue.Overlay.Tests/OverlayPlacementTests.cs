@@ -1,4 +1,5 @@
 using InputCue.Core.InputContext;
+using InputCue.Core.Settings;
 
 namespace InputCue.Overlay.Tests;
 
@@ -6,16 +7,28 @@ public sealed class OverlayPlacementTests
 {
     private static readonly PixelSize Overlay = new(18, 18);
 
-    [Fact]
-    public void PlacesOverlayToRightOfPhysicalPixelAnchor()
+    [Theory]
+    [InlineData(IndicatorPlacement.TopLeft, 76, 176)]
+    [InlineData(IndicatorPlacement.Top, 92, 176)]
+    [InlineData(IndicatorPlacement.TopRight, 108, 176)]
+    [InlineData(IndicatorPlacement.Left, 76, 201)]
+    [InlineData(IndicatorPlacement.Right, 108, 201)]
+    [InlineData(IndicatorPlacement.BottomLeft, 76, 226)]
+    [InlineData(IndicatorPlacement.Bottom, 92, 226)]
+    [InlineData(IndicatorPlacement.BottomRight, 108, 226)]
+    public void PlacesOverlayInEachSupportedDirection(
+        IndicatorPlacement placement,
+        int expectedX,
+        int expectedY)
     {
         var result = OverlayPlacement.Calculate(
             new ScreenRect(100, 200, 2, 20),
             new PixelRect(0, 0, 1920, 1040),
             Overlay,
-            6);
+            6,
+            placement);
 
-        Assert.Equal(new PixelPoint(108, 202), result);
+        Assert.Equal(new PixelPoint(expectedX, expectedY), result);
     }
 
     [Fact]
@@ -27,21 +40,42 @@ public sealed class OverlayPlacementTests
             Overlay,
             6);
 
-        Assert.Equal(new PixelPoint(1892, 202), result);
+        Assert.Equal(new PixelPoint(1892, 201), result);
     }
 
     [Theory]
-    [InlineData(2, 2, 10, 4)]
-    [InlineData(100, 1038, 108, 1022)]
-    public void ClampsOverlayAtTopAndBottomEdges(double anchorX, double anchorY, int expectedX, int expectedY)
+    [InlineData(IndicatorPlacement.Top, 100, 4, 92, 12)]
+    [InlineData(IndicatorPlacement.Bottom, 100, 1038, 92, 1014)]
+    public void UsesOppositeDirectionAtWorkAreaEdge(
+        IndicatorPlacement placement,
+        double anchorX,
+        double anchorY,
+        int expectedX,
+        int expectedY)
     {
         var result = OverlayPlacement.Calculate(
             new ScreenRect(anchorX, anchorY, 2, 2),
             new PixelRect(0, 4, 1920, 1040),
             Overlay,
-            6);
+            6,
+            placement);
 
         Assert.Equal(new PixelPoint(expectedX, expectedY), result);
+    }
+
+    [Fact]
+    public void AppliesFineTuningAfterSelectingDirection()
+    {
+        var result = OverlayPlacement.Calculate(
+            new ScreenRect(100, 200, 2, 20),
+            new PixelRect(0, 0, 1920, 1040),
+            Overlay,
+            6,
+            IndicatorPlacement.Right,
+            horizontalOffset: 7,
+            verticalOffset: -4);
+
+        Assert.Equal(new PixelPoint(115, 197), result);
     }
 
     [Fact]
@@ -53,7 +87,7 @@ public sealed class OverlayPlacementTests
             Overlay,
             6);
 
-        Assert.Equal(new PixelPoint(-992, 402), result);
+        Assert.Equal(new PixelPoint(-992, 401), result);
     }
 
     [Theory]

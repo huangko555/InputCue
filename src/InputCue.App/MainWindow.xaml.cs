@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using InputCue.Core.Indicator;
@@ -18,6 +19,10 @@ namespace InputCue.App;
 public partial class MainWindow : Window, IDisposable
 {
     private const int HistoryCapacity = 200;
+    private const int PreviewGapDip = 6;
+    private const int PreviewWindowPaddingDip = 6;
+    private const double PreviewWidthDip = 160;
+    private const double PreviewHeightDip = 90;
     private static readonly TimeSpan AnimationTickInterval = TimeSpan.FromMilliseconds(33);
     private static readonly TimeSpan CapsLockPollInterval = TimeSpan.FromMilliseconds(100);
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -44,6 +49,10 @@ public partial class MainWindow : Window, IDisposable
     private bool _started;
     private int _displayDurationMilliseconds;
     private int _minimumDisplayDurationMilliseconds;
+    private IndicatorPlacement _placement;
+    private int _horizontalOffsetDip;
+    private int _verticalOffsetDip;
+    private int _indicatorSizeDip;
 
     public event EventHandler? WatchingStateChanged;
 
@@ -64,9 +73,19 @@ public partial class MainWindow : Window, IDisposable
         _indicatorEnabled = settings.IndicatorEnabled;
         _displayDurationMilliseconds = settings.DisplayDurationMilliseconds;
         _minimumDisplayDurationMilliseconds = settings.MinimumDisplayDurationMilliseconds;
+        _placement = settings.Placement;
+        _horizontalOffsetDip = settings.HorizontalOffsetDip;
+        _verticalOffsetDip = settings.VerticalOffsetDip;
+        _indicatorSizeDip = settings.IndicatorSizeDip;
         DisplayDurationTextBox.Text = _displayDurationMilliseconds.ToString(CultureInfo.InvariantCulture);
         MinimumDisplayDurationTextBox.Text =
             _minimumDisplayDurationMilliseconds.ToString(CultureInfo.InvariantCulture);
+        IndicatorSizeTextBox.Text = _indicatorSizeDip.ToString(CultureInfo.InvariantCulture);
+        HorizontalOffsetTextBox.Text = _horizontalOffsetDip.ToString(CultureInfo.InvariantCulture);
+        VerticalOffsetTextBox.Text = _verticalOffsetDip.ToString(CultureInfo.InvariantCulture);
+        SetPlacementSelection(_placement);
+        ConfigureOverlay();
+        UpdatePlacementPreview();
         _indicatorSession = CreateIndicatorSession(
             _displayDurationMilliseconds,
             _minimumDisplayDurationMilliseconds);
@@ -191,14 +210,51 @@ public partial class MainWindow : Window, IDisposable
             return;
         }
 
+        if (!TryReadPositionSettings(
+                out var placement,
+                out var horizontalOffsetDip,
+                out var verticalOffsetDip,
+                out var indicatorSizeDip))
+        {
+            StatusText.Text =
+                $"圆点尺寸必须为 {InputCueSettings.MinimumIndicatorSizeDip} 到 " +
+                $"{InputCueSettings.MaximumIndicatorSizeDip}；横向和纵向微调必须为 " +
+                $"{InputCueSettings.MinimumOffsetDip} 到 {InputCueSettings.MaximumOffsetDip}。";
+            return;
+        }
+
         _displayDurationMilliseconds = displayDuration;
         _minimumDisplayDurationMilliseconds = minimumDisplayDuration;
+        _placement = placement;
+        _horizontalOffsetDip = horizontalOffsetDip;
+        _verticalOffsetDip = verticalOffsetDip;
+        _indicatorSizeDip = indicatorSizeDip;
         _indicatorSession = CreateIndicatorSession(displayDuration, minimumDisplayDuration);
         _overlayPresenter.Hide();
+        ConfigureOverlay();
         _indicatorTimer.Stop();
         StatusText.Text = PersistSettings()
-            ? $"已应用并保存：显示 {displayDuration} ms；输入后最短 {minimumDisplayDuration} ms。"
-            : "时长已应用，但设置未能保存。";
+            ? $"已应用并保存：{PlacementName(placement)}，尺寸 {indicatorSizeDip}，" +
+              $"微调 ({horizontalOffsetDip}, {verticalOffsetDip})。"
+            : "设置已应用，但未能保存。";
+    }
+
+    private void OnPlacementPreviewChanged(object sender, RoutedEventArgs e)
+    {
+        if (_settingsInitialized)
+        {
+            UpdatePlacementPreview();
+        }
+    }
+
+    private void OnResetPlacementClick(object sender, RoutedEventArgs e)
+    {
+        SetPlacementSelection(IndicatorPlacement.Right);
+        IndicatorSizeTextBox.Text =
+            InputCueSettings.DefaultIndicatorSizeDip.ToString(CultureInfo.InvariantCulture);
+        HorizontalOffsetTextBox.Text = "0";
+        VerticalOffsetTextBox.Text = "0";
+        UpdatePlacementPreview();
     }
 
     private async void OnExportClick(object sender, RoutedEventArgs e)
@@ -427,12 +483,163 @@ public partial class MainWindow : Window, IDisposable
             out milliseconds) &&
         milliseconds is >= 0 and <= 60000;
 
+    private bool TryReadPositionSettings(
+        out IndicatorPlacement placement,
+        out int horizontalOffsetDip,
+        out int verticalOffsetDip,
+        out int indicatorSizeDip)
+    {
+        placement = GetSelectedPlacement() ?? _placement;
+        horizontalOffsetDip = 0;
+        verticalOffsetDip = 0;
+        indicatorSizeDip = 0;
+        return TryReadBoundedInteger(
+                HorizontalOffsetTextBox.Text,
+                InputCueSettings.MinimumOffsetDip,
+                InputCueSettings.MaximumOffsetDip,
+                out horizontalOffsetDip) &&
+            TryReadBoundedInteger(
+                VerticalOffsetTextBox.Text,
+                InputCueSettings.MinimumOffsetDip,
+                InputCueSettings.MaximumOffsetDip,
+                out verticalOffsetDip) &&
+            TryReadBoundedInteger(
+                IndicatorSizeTextBox.Text,
+                InputCueSettings.MinimumIndicatorSizeDip,
+                InputCueSettings.MaximumIndicatorSizeDip,
+                out indicatorSizeDip);
+    }
+
+    private static bool TryReadBoundedInteger(
+        string text,
+        int minimum,
+        int maximum,
+        out int value) =>
+        int.TryParse(
+            text,
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out value) &&
+        value >= minimum &&
+        value <= maximum;
+
+    private IndicatorPlacement? GetSelectedPlacement()
+    {
+        foreach (var radioButton in PositionPicker.Children.OfType<RadioButton>())
+        {
+            if (radioButton.IsChecked is true &&
+                radioButton.Tag is string value &&
+                Enum.TryParse<IndicatorPlacement>(value, out var placement))
+            {
+                return placement;
+            }
+        }
+
+        return null;
+    }
+
+    private void SetPlacementSelection(IndicatorPlacement placement)
+    {
+        foreach (var radioButton in PositionPicker.Children.OfType<RadioButton>())
+        {
+            radioButton.IsChecked =
+                radioButton.Tag is string value &&
+                Enum.TryParse<IndicatorPlacement>(value, out var candidate) &&
+                candidate == placement;
+        }
+    }
+
+    private void UpdatePlacementPreview()
+    {
+        var placement = GetSelectedPlacement() ?? _placement;
+        var size = TryReadBoundedInteger(
+            IndicatorSizeTextBox.Text,
+            InputCueSettings.MinimumIndicatorSizeDip,
+            InputCueSettings.MaximumIndicatorSizeDip,
+            out var parsedSize)
+            ? parsedSize
+            : Math.Clamp(
+                _indicatorSizeDip,
+                InputCueSettings.MinimumIndicatorSizeDip,
+                InputCueSettings.MaximumIndicatorSizeDip);
+        var horizontalOffset = TryReadBoundedInteger(
+            HorizontalOffsetTextBox.Text,
+            InputCueSettings.MinimumOffsetDip,
+            InputCueSettings.MaximumOffsetDip,
+            out var parsedHorizontalOffset)
+            ? parsedHorizontalOffset
+            : _horizontalOffsetDip;
+        var verticalOffset = TryReadBoundedInteger(
+            VerticalOffsetTextBox.Text,
+            InputCueSettings.MinimumOffsetDip,
+            InputCueSettings.MaximumOffsetDip,
+            out var parsedVerticalOffset)
+            ? parsedVerticalOffset
+            : _verticalOffsetDip;
+
+        const double caretLeft = 79;
+        const double caretTop = 31;
+        const double caretWidth = 2;
+        const double caretHeight = 28;
+        var windowSize = size + PreviewWindowPaddingDip;
+        var centeredX = caretLeft + ((caretWidth - windowSize) / 2);
+        var centeredY = caretTop + ((caretHeight - windowSize) / 2);
+        var leftX = caretLeft - PreviewGapDip - windowSize;
+        var rightX = caretLeft + caretWidth + PreviewGapDip;
+        var topY = caretTop - PreviewGapDip - windowSize;
+        var bottomY = caretTop + caretHeight + PreviewGapDip;
+
+        var (windowX, windowY) = placement switch
+        {
+            IndicatorPlacement.TopLeft => (leftX, topY),
+            IndicatorPlacement.Top => (centeredX, topY),
+            IndicatorPlacement.TopRight => (rightX, topY),
+            IndicatorPlacement.Left => (leftX, centeredY),
+            IndicatorPlacement.Right => (rightX, centeredY),
+            IndicatorPlacement.BottomLeft => (leftX, bottomY),
+            IndicatorPlacement.Bottom => (centeredX, bottomY),
+            IndicatorPlacement.BottomRight => (rightX, bottomY),
+            _ => (rightX, centeredY),
+        };
+        windowX = Math.Clamp(windowX + horizontalOffset, 0, PreviewWidthDip - windowSize);
+        windowY = Math.Clamp(windowY + verticalOffset, 0, PreviewHeightDip - windowSize);
+
+        PlacementPreviewDot.Width = size;
+        PlacementPreviewDot.Height = size;
+        Canvas.SetLeft(PlacementPreviewDot, windowX + (PreviewWindowPaddingDip / 2d));
+        Canvas.SetTop(PlacementPreviewDot, windowY + (PreviewWindowPaddingDip / 2d));
+    }
+
+    private void ConfigureOverlay() =>
+        _overlayPresenter.Configure(
+            _placement,
+            _horizontalOffsetDip,
+            _verticalOffsetDip,
+            _indicatorSizeDip);
+
+    private static string PlacementName(IndicatorPlacement placement) => placement switch
+    {
+        IndicatorPlacement.TopLeft => "左上",
+        IndicatorPlacement.Top => "上方",
+        IndicatorPlacement.TopRight => "右上",
+        IndicatorPlacement.Left => "左侧",
+        IndicatorPlacement.Right => "右侧",
+        IndicatorPlacement.BottomLeft => "左下",
+        IndicatorPlacement.Bottom => "下方",
+        IndicatorPlacement.BottomRight => "右下",
+        _ => "右侧",
+    };
+
     private bool PersistSettings() =>
         !_settingsInitialized ||
         _saveSettings(new InputCueSettings(
             _indicatorEnabled,
             _displayDurationMilliseconds,
-            _minimumDisplayDurationMilliseconds));
+            _minimumDisplayDurationMilliseconds,
+            _placement,
+            _horizontalOffsetDip,
+            _verticalOffsetDip,
+            _indicatorSizeDip));
 
     private static string FormatDiagnostic(InputContextDiagnostic diagnostic)
     {
