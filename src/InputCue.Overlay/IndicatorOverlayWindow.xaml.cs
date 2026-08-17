@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using InputCue.Core.Indicator;
@@ -19,6 +20,10 @@ public partial class IndicatorOverlayWindow : Window
     private const uint ShowWindowPosition = 0x0040;
     private const int AnchorGapDip = 6;
     private const int WindowPaddingDip = 6;
+    private const double LightBadgeBaseSizeDip = 36;
+    private const double LightBadgeBaseBorderDip = 2.5;
+    private const double LightBadgeBaseInsetDip = 5;
+    private const double LightBadgeBaseShadowOffsetDip = 4;
     private const uint MonitorDefaultToNearest = 0x00000002;
 
     private static readonly SolidColorBrush ChineseBrush = FrozenBrush("#E5534B");
@@ -28,6 +33,7 @@ public partial class IndicatorOverlayWindow : Window
 
     private nint _windowHandle;
     private long? _positionedGeneration;
+    private IndicatorStyle _style = IndicatorStyle.Dot;
     private IndicatorPlacement _placement = IndicatorPlacement.Right;
     private int _horizontalOffsetDip;
     private int _verticalOffsetDip;
@@ -38,11 +44,18 @@ public partial class IndicatorOverlayWindow : Window
     }
 
     internal void Configure(
+        IndicatorStyle style,
         IndicatorPlacement placement,
         int horizontalOffsetDip,
         int verticalOffsetDip,
-        int indicatorSizeDip)
+        int indicatorSizeDip,
+        int lightBadgeSizeDip)
     {
+        if (!Enum.IsDefined(style))
+        {
+            throw new ArgumentOutOfRangeException(nameof(style));
+        }
+
         if (!Enum.IsDefined(placement))
         {
             throw new ArgumentOutOfRangeException(nameof(placement));
@@ -63,13 +76,16 @@ public partial class IndicatorOverlayWindow : Window
             throw new ArgumentOutOfRangeException(nameof(indicatorSizeDip));
         }
 
+        if (lightBadgeSizeDip is < InputCueSettings.MinimumLightBadgeSizeDip or > InputCueSettings.MaximumLightBadgeSizeDip)
+        {
+            throw new ArgumentOutOfRangeException(nameof(lightBadgeSizeDip));
+        }
+
+        _style = style;
         _placement = placement;
         _horizontalOffsetDip = horizontalOffsetDip;
         _verticalOffsetDip = verticalOffsetDip;
-        IndicatorDot.Width = indicatorSizeDip;
-        IndicatorDot.Height = indicatorSizeDip;
-        Width = indicatorSizeDip + WindowPaddingDip;
-        Height = indicatorSizeDip + WindowPaddingDip;
+        ConfigureVisuals(indicatorSizeDip, lightBadgeSizeDip);
         _positionedGeneration = null;
     }
 
@@ -90,6 +106,7 @@ public partial class IndicatorOverlayWindow : Window
             InputState.CapsLock => CapsLockBrush,
             _ => Brushes.Transparent,
         };
+        LightBadgeGlyph.Data = LightBadgeGlyphs.For(state.InputState);
         Opacity = state.Opacity;
 
         var shouldReposition = OverlayRenderPolicy.ShouldReposition(
@@ -106,6 +123,43 @@ public partial class IndicatorOverlayWindow : Window
             Position(anchor);
             _positionedGeneration = state.Generation;
         }
+    }
+
+    private void ConfigureVisuals(int indicatorSizeDip, int lightBadgeSizeDip)
+    {
+        IndicatorDot.Visibility = _style == IndicatorStyle.Dot
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        LightBadgeVisual.Visibility = _style == IndicatorStyle.LightBadge
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        if (_style == IndicatorStyle.Dot)
+        {
+            IndicatorDot.Width = indicatorSizeDip;
+            IndicatorDot.Height = indicatorSizeDip;
+            Width = indicatorSizeDip + WindowPaddingDip;
+            Height = indicatorSizeDip + WindowPaddingDip;
+            return;
+        }
+
+        var scale = lightBadgeSizeDip / LightBadgeBaseSizeDip;
+        var shadowOffset = LightBadgeBaseShadowOffsetDip * scale;
+        var overallSize = lightBadgeSizeDip + shadowOffset;
+        var inset = LightBadgeBaseInsetDip * scale;
+
+        LightBadgeVisual.Width = overallSize;
+        LightBadgeVisual.Height = overallSize;
+        LightBadgeShadow.Width = lightBadgeSizeDip;
+        LightBadgeShadow.Height = lightBadgeSizeDip;
+        Canvas.SetLeft(LightBadgeShadow, shadowOffset);
+        Canvas.SetTop(LightBadgeShadow, shadowOffset);
+        LightBadgeBody.Width = lightBadgeSizeDip;
+        LightBadgeBody.Height = lightBadgeSizeDip;
+        LightBadgeBody.BorderThickness = new Thickness(LightBadgeBaseBorderDip * scale);
+        LightBadgeGlyphViewbox.Margin = new Thickness(inset);
+        Width = overallSize;
+        Height = overallSize;
     }
 
     protected override void OnSourceInitialized(EventArgs e)

@@ -28,5 +28,21 @@
                                   ShadowDepth="1" />
             </Ellipse.Effect>
         </Ellipse>
+        <Canvas x:Name="LightBadgeVisual"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Visibility="Collapsed">
+            <Border x:Name="LightBadgeShadow"
+                    Background="#FF000000" />
+            <Border x:Name="LightBadgeBody"
+                    Background="#FFFFFFFF"
+                    BorderBrush="#FF000000">
+                <Viewbox x:Name="LightBadgeGlyphViewbox"
+                         Stretch="Uniform">
+                    <Path x:Name="LightBadgeGlyph"
+                          Fill="#FF000000" />
+                </Viewbox>
+            </Border>
+        </Canvas>
     </Grid>
 </Window>

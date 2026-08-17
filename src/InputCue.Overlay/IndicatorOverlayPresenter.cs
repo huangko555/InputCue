@@ -9,17 +9,21 @@ public sealed class IndicatorOverlayPresenter : IDisposable
     private bool _disposed;
 
     public void Configure(
+        IndicatorStyle style,
         IndicatorPlacement placement,
         int horizontalOffsetDip,
         int verticalOffsetDip,
-        int indicatorSizeDip)
+        int indicatorSizeDip,
+        int lightBadgeSizeDip)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _window.Configure(
+            style,
             placement,
             horizontalOffsetDip,
             verticalOffsetDip,
-            indicatorSizeDip);
+            indicatorSizeDip,
+            lightBadgeSizeDip);
     }
 
     public void Update(IndicatorViewState state)

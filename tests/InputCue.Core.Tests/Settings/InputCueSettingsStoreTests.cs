@@ -30,7 +30,9 @@ public sealed class InputCueSettingsStoreTests
             IndicatorPlacement.BottomLeft,
             HorizontalOffsetDip: -8,
             VerticalOffsetDip: 5,
-            IndicatorSizeDip: 18);
+            IndicatorSizeDip: 18,
+            Style: IndicatorStyle.LightBadge,
+            LightBadgeSizeDip: 44);
 
         Assert.True(store.TrySave(first));
         Assert.True(store.TrySave(second));
@@ -66,6 +68,8 @@ public sealed class InputCueSettingsStoreTests
         Assert.Equal(0, settings.HorizontalOffsetDip);
         Assert.Equal(0, settings.VerticalOffsetDip);
         Assert.Equal(InputCueSettings.DefaultIndicatorSizeDip, settings.IndicatorSizeDip);
+        Assert.Equal(IndicatorStyle.Dot, settings.Style);
+        Assert.Equal(InputCueSettings.DefaultLightBadgeSizeDip, settings.LightBadgeSizeDip);
     }
 
     [Theory]
@@ -121,6 +125,29 @@ public sealed class InputCueSettingsStoreTests
             horizontalOffsetDip,
             verticalOffsetDip,
             indicatorSizeDip));
+
+        Assert.False(saved);
+        Assert.False(File.Exists(path));
+    }
+
+    [Theory]
+    [InlineData((IndicatorStyle)99, 36)]
+    [InlineData(IndicatorStyle.LightBadge, 23)]
+    [InlineData(IndicatorStyle.LightBadge, 65)]
+    public void InvalidStyleSettingsAreNotWritten(
+        IndicatorStyle style,
+        int lightBadgeSizeDip)
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var store = new InputCueSettingsStore(path);
+
+        var saved = store.TrySave(new InputCueSettings(
+            true,
+            1000,
+            300,
+            Style: style,
+            LightBadgeSizeDip: lightBadgeSizeDip));
 
         Assert.False(saved);
         Assert.False(File.Exists(path));

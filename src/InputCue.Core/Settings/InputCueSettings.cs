@@ -9,13 +9,18 @@ public sealed record InputCueSettings(
     IndicatorPlacement Placement = IndicatorPlacement.Right,
     int HorizontalOffsetDip = 0,
     int VerticalOffsetDip = 0,
-    int IndicatorSizeDip = 12)
+    int IndicatorSizeDip = 12,
+    IndicatorStyle Style = IndicatorStyle.Dot,
+    int LightBadgeSizeDip = 36)
 {
     public const int MinimumOffsetDip = -40;
     public const int MaximumOffsetDip = 40;
     public const int MinimumIndicatorSizeDip = 6;
     public const int MaximumIndicatorSizeDip = 32;
     public const int DefaultIndicatorSizeDip = 12;
+    public const int MinimumLightBadgeSizeDip = 24;
+    public const int MaximumLightBadgeSizeDip = 64;
+    public const int DefaultLightBadgeSizeDip = 36;
 
     public static InputCueSettings Default { get; } = new(
         IndicatorEnabled: true,
@@ -29,5 +34,7 @@ public sealed record InputCueSettings(
         Enum.IsDefined(Placement) &&
         HorizontalOffsetDip is >= MinimumOffsetDip and <= MaximumOffsetDip &&
         VerticalOffsetDip is >= MinimumOffsetDip and <= MaximumOffsetDip &&
-        IndicatorSizeDip is >= MinimumIndicatorSizeDip and <= MaximumIndicatorSizeDip;
+        IndicatorSizeDip is >= MinimumIndicatorSizeDip and <= MaximumIndicatorSizeDip &&
+        Enum.IsDefined(Style) &&
+        LightBadgeSizeDip is >= MinimumLightBadgeSizeDip and <= MaximumLightBadgeSizeDip;
 }

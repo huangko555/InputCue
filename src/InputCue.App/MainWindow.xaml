@@ -41,6 +41,23 @@
             <StackPanel Margin="0,10,0,0"
                         Orientation="Horizontal">
                 <TextBlock VerticalAlignment="Center"
+                           Text="提示样式" />
+                <RadioButton x:Name="DotStyleRadio"
+                             Margin="12,0,0,0"
+                             GroupName="IndicatorStyle"
+                             Tag="Dot"
+                             Checked="OnStylePreviewChanged"
+                             Content="圆点" />
+                <RadioButton x:Name="LightBadgeStyleRadio"
+                             Margin="14,0,0,0"
+                             GroupName="IndicatorStyle"
+                             Tag="LightBadge"
+                             Checked="OnStylePreviewChanged"
+                             Content="亮色徽标" />
+            </StackPanel>
+            <StackPanel Margin="0,10,0,0"
+                        Orientation="Horizontal">
+                <TextBlock VerticalAlignment="Center"
                            Text="显示时长 (ms)" />
                 <TextBox x:Name="DisplayDurationTextBox"
                          Width="72"
@@ -152,6 +169,20 @@
                                      Fill="#FF2F7FD6"
                                      Stroke="#FFFFFFFF"
                                      StrokeThickness="2" />
+                            <Canvas x:Name="PlacementPreviewBadge"
+                                    Visibility="Collapsed">
+                                <Border x:Name="PlacementPreviewBadgeShadow"
+                                        Background="#FF000000" />
+                                <Border x:Name="PlacementPreviewBadgeBody"
+                                        Background="#FFFFFFFF"
+                                        BorderBrush="#FF000000">
+                                    <Viewbox x:Name="PlacementPreviewBadgeViewbox"
+                                             Stretch="Uniform">
+                                        <Path Data="M0 8.448H39.072V31.728H34.368V12.912H4.512V31.968H0V8.448ZM2.352 24.624H37.056V29.088H2.352V24.624ZM17.04 0H21.792V44.496H17.04V0Z"
+                                              Fill="#FF000000" />
+                                    </Viewbox>
+                                </Border>
+                            </Canvas>
                         </Canvas>
                     </Border>
                 </StackPanel>
@@ -167,12 +198,27 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <TextBlock VerticalAlignment="Center"
-                               Text="圆点尺寸" />
-                    <TextBox x:Name="IndicatorSizeTextBox"
-                             Grid.Column="1"
-                             Margin="8,0,0,6"
-                             TextChanged="OnPlacementPreviewChanged" />
+                    <StackPanel x:Name="DotSizePanel"
+                                Grid.ColumnSpan="2"
+                                Orientation="Horizontal">
+                        <TextBlock VerticalAlignment="Center"
+                                   Text="圆点尺寸" />
+                        <TextBox x:Name="DotSizeTextBox"
+                                 Width="56"
+                                 Margin="8,0,0,6"
+                                 TextChanged="OnPlacementPreviewChanged" />
+                    </StackPanel>
+                    <StackPanel x:Name="BadgeSizePanel"
+                                Grid.ColumnSpan="2"
+                                Orientation="Horizontal"
+                                Visibility="Collapsed">
+                        <TextBlock VerticalAlignment="Center"
+                                   Text="徽标尺寸" />
+                        <TextBox x:Name="BadgeSizeTextBox"
+                                 Width="56"
+                                 Margin="8,0,0,6"
+                                 TextChanged="OnPlacementPreviewChanged" />
+                    </StackPanel>
                     <TextBlock Grid.Row="1"
                                VerticalAlignment="Center"
                                Text="横向微调" />

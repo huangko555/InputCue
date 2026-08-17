@@ -21,6 +21,10 @@ public partial class MainWindow : Window, IDisposable
     private const int HistoryCapacity = 200;
     private const int PreviewGapDip = 6;
     private const int PreviewWindowPaddingDip = 6;
+    private const double PreviewBadgeBaseSizeDip = 36;
+    private const double PreviewBadgeBorderDip = 2.5;
+    private const double PreviewBadgeInsetDip = 5;
+    private const double PreviewBadgeShadowOffsetDip = 4;
     private const double PreviewWidthDip = 160;
     private const double PreviewHeightDip = 90;
     private static readonly TimeSpan AnimationTickInterval = TimeSpan.FromMilliseconds(33);
@@ -53,6 +57,8 @@ public partial class MainWindow : Window, IDisposable
     private int _horizontalOffsetDip;
     private int _verticalOffsetDip;
     private int _indicatorSizeDip;
+    private IndicatorStyle _style;
+    private int _lightBadgeSizeDip;
 
     public event EventHandler? WatchingStateChanged;
 
@@ -77,13 +83,18 @@ public partial class MainWindow : Window, IDisposable
         _horizontalOffsetDip = settings.HorizontalOffsetDip;
         _verticalOffsetDip = settings.VerticalOffsetDip;
         _indicatorSizeDip = settings.IndicatorSizeDip;
+        _style = settings.Style;
+        _lightBadgeSizeDip = settings.LightBadgeSizeDip;
         DisplayDurationTextBox.Text = _displayDurationMilliseconds.ToString(CultureInfo.InvariantCulture);
         MinimumDisplayDurationTextBox.Text =
             _minimumDisplayDurationMilliseconds.ToString(CultureInfo.InvariantCulture);
-        IndicatorSizeTextBox.Text = _indicatorSizeDip.ToString(CultureInfo.InvariantCulture);
+        DotSizeTextBox.Text = _indicatorSizeDip.ToString(CultureInfo.InvariantCulture);
+        BadgeSizeTextBox.Text = _lightBadgeSizeDip.ToString(CultureInfo.InvariantCulture);
         HorizontalOffsetTextBox.Text = _horizontalOffsetDip.ToString(CultureInfo.InvariantCulture);
         VerticalOffsetTextBox.Text = _verticalOffsetDip.ToString(CultureInfo.InvariantCulture);
+        SetStyleSelection(_style);
         SetPlacementSelection(_placement);
+        UpdateStylePanels();
         ConfigureOverlay();
         UpdatePlacementPreview();
         _indicatorSession = CreateIndicatorSession(
@@ -211,32 +222,48 @@ public partial class MainWindow : Window, IDisposable
         }
 
         if (!TryReadPositionSettings(
+                out var style,
                 out var placement,
                 out var horizontalOffsetDip,
                 out var verticalOffsetDip,
-                out var indicatorSizeDip))
+                out var indicatorSizeDip,
+                out var lightBadgeSizeDip))
         {
             StatusText.Text =
                 $"圆点尺寸必须为 {InputCueSettings.MinimumIndicatorSizeDip} 到 " +
-                $"{InputCueSettings.MaximumIndicatorSizeDip}；横向和纵向微调必须为 " +
+                $"{InputCueSettings.MaximumIndicatorSizeDip}；徽标尺寸必须为 " +
+                $"{InputCueSettings.MinimumLightBadgeSizeDip} 到 " +
+                $"{InputCueSettings.MaximumLightBadgeSizeDip}；横向和纵向微调必须为 " +
                 $"{InputCueSettings.MinimumOffsetDip} 到 {InputCueSettings.MaximumOffsetDip}。";
             return;
         }
 
         _displayDurationMilliseconds = displayDuration;
         _minimumDisplayDurationMilliseconds = minimumDisplayDuration;
+        _style = style;
         _placement = placement;
         _horizontalOffsetDip = horizontalOffsetDip;
         _verticalOffsetDip = verticalOffsetDip;
         _indicatorSizeDip = indicatorSizeDip;
+        _lightBadgeSizeDip = lightBadgeSizeDip;
         _indicatorSession = CreateIndicatorSession(displayDuration, minimumDisplayDuration);
         _overlayPresenter.Hide();
         ConfigureOverlay();
         _indicatorTimer.Stop();
+        var appliedSize = style == IndicatorStyle.Dot ? indicatorSizeDip : lightBadgeSizeDip;
         StatusText.Text = PersistSettings()
-            ? $"已应用并保存：{PlacementName(placement)}，尺寸 {indicatorSizeDip}，" +
+            ? $"已应用并保存：{StyleName(style)}，{PlacementName(placement)}，尺寸 {appliedSize}，" +
               $"微调 ({horizontalOffsetDip}, {verticalOffsetDip})。"
             : "设置已应用，但未能保存。";
+    }
+
+    private void OnStylePreviewChanged(object sender, RoutedEventArgs e)
+    {
+        if (_settingsInitialized)
+        {
+            UpdateStylePanels();
+            UpdatePlacementPreview();
+        }
     }
 
     private void OnPlacementPreviewChanged(object sender, RoutedEventArgs e)
@@ -250,8 +277,6 @@ public partial class MainWindow : Window, IDisposable
     private void OnResetPlacementClick(object sender, RoutedEventArgs e)
     {
         SetPlacementSelection(IndicatorPlacement.Right);
-        IndicatorSizeTextBox.Text =
-            InputCueSettings.DefaultIndicatorSizeDip.ToString(CultureInfo.InvariantCulture);
         HorizontalOffsetTextBox.Text = "0";
         VerticalOffsetTextBox.Text = "0";
         UpdatePlacementPreview();
@@ -484,15 +509,19 @@ public partial class MainWindow : Window, IDisposable
         milliseconds is >= 0 and <= 60000;
 
     private bool TryReadPositionSettings(
+        out IndicatorStyle style,
         out IndicatorPlacement placement,
         out int horizontalOffsetDip,
         out int verticalOffsetDip,
-        out int indicatorSizeDip)
+        out int indicatorSizeDip,
+        out int lightBadgeSizeDip)
     {
+        style = GetSelectedStyle();
         placement = GetSelectedPlacement() ?? _placement;
         horizontalOffsetDip = 0;
         verticalOffsetDip = 0;
         indicatorSizeDip = 0;
+        lightBadgeSizeDip = 0;
         return TryReadBoundedInteger(
                 HorizontalOffsetTextBox.Text,
                 InputCueSettings.MinimumOffsetDip,
@@ -504,10 +533,15 @@ public partial class MainWindow : Window, IDisposable
                 InputCueSettings.MaximumOffsetDip,
                 out verticalOffsetDip) &&
             TryReadBoundedInteger(
-                IndicatorSizeTextBox.Text,
+                DotSizeTextBox.Text,
                 InputCueSettings.MinimumIndicatorSizeDip,
                 InputCueSettings.MaximumIndicatorSizeDip,
-                out indicatorSizeDip);
+                out indicatorSizeDip) &&
+            TryReadBoundedInteger(
+                BadgeSizeTextBox.Text,
+                InputCueSettings.MinimumLightBadgeSizeDip,
+                InputCueSettings.MaximumLightBadgeSizeDip,
+                out lightBadgeSizeDip);
     }
 
     private static bool TryReadBoundedInteger(
@@ -538,6 +572,28 @@ public partial class MainWindow : Window, IDisposable
         return null;
     }
 
+    private IndicatorStyle GetSelectedStyle() =>
+        LightBadgeStyleRadio.IsChecked is true
+            ? IndicatorStyle.LightBadge
+            : IndicatorStyle.Dot;
+
+    private void SetStyleSelection(IndicatorStyle style)
+    {
+        DotStyleRadio.IsChecked = style == IndicatorStyle.Dot;
+        LightBadgeStyleRadio.IsChecked = style == IndicatorStyle.LightBadge;
+    }
+
+    private void UpdateStylePanels()
+    {
+        var style = GetSelectedStyle();
+        DotSizePanel.Visibility = style == IndicatorStyle.Dot
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        BadgeSizePanel.Visibility = style == IndicatorStyle.LightBadge
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
     private void SetPlacementSelection(IndicatorPlacement placement)
     {
         foreach (var radioButton in PositionPicker.Children.OfType<RadioButton>())
@@ -551,9 +607,10 @@ public partial class MainWindow : Window, IDisposable
 
     private void UpdatePlacementPreview()
     {
+        var style = GetSelectedStyle();
         var placement = GetSelectedPlacement() ?? _placement;
-        var size = TryReadBoundedInteger(
-            IndicatorSizeTextBox.Text,
+        var dotSize = TryReadBoundedInteger(
+            DotSizeTextBox.Text,
             InputCueSettings.MinimumIndicatorSizeDip,
             InputCueSettings.MaximumIndicatorSizeDip,
             out var parsedSize)
@@ -562,6 +619,16 @@ public partial class MainWindow : Window, IDisposable
                 _indicatorSizeDip,
                 InputCueSettings.MinimumIndicatorSizeDip,
                 InputCueSettings.MaximumIndicatorSizeDip);
+        var badgeSize = TryReadBoundedInteger(
+            BadgeSizeTextBox.Text,
+            InputCueSettings.MinimumLightBadgeSizeDip,
+            InputCueSettings.MaximumLightBadgeSizeDip,
+            out var parsedBadgeSize)
+            ? parsedBadgeSize
+            : Math.Clamp(
+                _lightBadgeSizeDip,
+                InputCueSettings.MinimumLightBadgeSizeDip,
+                InputCueSettings.MaximumLightBadgeSizeDip);
         var horizontalOffset = TryReadBoundedInteger(
             HorizontalOffsetTextBox.Text,
             InputCueSettings.MinimumOffsetDip,
@@ -581,7 +648,11 @@ public partial class MainWindow : Window, IDisposable
         const double caretTop = 31;
         const double caretWidth = 2;
         const double caretHeight = 28;
-        var windowSize = size + PreviewWindowPaddingDip;
+        var badgeScale = badgeSize / PreviewBadgeBaseSizeDip;
+        var badgeShadowOffset = PreviewBadgeShadowOffsetDip * badgeScale;
+        var windowSize = style == IndicatorStyle.Dot
+            ? dotSize + PreviewWindowPaddingDip
+            : badgeSize + badgeShadowOffset;
         var centeredX = caretLeft + ((caretWidth - windowSize) / 2);
         var centeredY = caretTop + ((caretHeight - windowSize) / 2);
         var leftX = caretLeft - PreviewGapDip - windowSize;
@@ -604,18 +675,48 @@ public partial class MainWindow : Window, IDisposable
         windowX = Math.Clamp(windowX + horizontalOffset, 0, PreviewWidthDip - windowSize);
         windowY = Math.Clamp(windowY + verticalOffset, 0, PreviewHeightDip - windowSize);
 
-        PlacementPreviewDot.Width = size;
-        PlacementPreviewDot.Height = size;
+        PlacementPreviewDot.Visibility = style == IndicatorStyle.Dot
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        PlacementPreviewBadge.Visibility = style == IndicatorStyle.LightBadge
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        PlacementPreviewDot.Width = dotSize;
+        PlacementPreviewDot.Height = dotSize;
         Canvas.SetLeft(PlacementPreviewDot, windowX + (PreviewWindowPaddingDip / 2d));
         Canvas.SetTop(PlacementPreviewDot, windowY + (PreviewWindowPaddingDip / 2d));
+
+        PlacementPreviewBadge.Width = windowSize;
+        PlacementPreviewBadge.Height = windowSize;
+        PlacementPreviewBadgeShadow.Width = badgeSize;
+        PlacementPreviewBadgeShadow.Height = badgeSize;
+        Canvas.SetLeft(PlacementPreviewBadgeShadow, badgeShadowOffset);
+        Canvas.SetTop(PlacementPreviewBadgeShadow, badgeShadowOffset);
+        PlacementPreviewBadgeBody.Width = badgeSize;
+        PlacementPreviewBadgeBody.Height = badgeSize;
+        PlacementPreviewBadgeBody.BorderThickness =
+            new Thickness(PreviewBadgeBorderDip * badgeScale);
+        PlacementPreviewBadgeViewbox.Margin =
+            new Thickness(PreviewBadgeInsetDip * badgeScale);
+        Canvas.SetLeft(PlacementPreviewBadge, windowX);
+        Canvas.SetTop(PlacementPreviewBadge, windowY);
     }
 
     private void ConfigureOverlay() =>
         _overlayPresenter.Configure(
+            _style,
             _placement,
             _horizontalOffsetDip,
             _verticalOffsetDip,
-            _indicatorSizeDip);
+            _indicatorSizeDip,
+            _lightBadgeSizeDip);
+
+    private static string StyleName(IndicatorStyle style) => style switch
+    {
+        IndicatorStyle.Dot => "圆点",
+        IndicatorStyle.LightBadge => "亮色徽标",
+        _ => "圆点",
+    };
 
     private static string PlacementName(IndicatorPlacement placement) => placement switch
     {
@@ -639,7 +740,9 @@ public partial class MainWindow : Window, IDisposable
             _placement,
             _horizontalOffsetDip,
             _verticalOffsetDip,
-            _indicatorSizeDip));
+            _indicatorSizeDip,
+            _style,
+            _lightBadgeSizeDip));
 
     private static string FormatDiagnostic(InputContextDiagnostic diagnostic)
     {
