@@ -93,6 +93,24 @@ public sealed class IndicatorSessionTests
     }
 
     [Fact]
+    public void PositionStabilizationMovesAnchorWithoutExtendingDeadline()
+    {
+        var movedCaret = new ScreenRect(130, 140, 2, 20);
+        var session = new IndicatorSession(Transient);
+        _ = session.Observe(Snapshot(1, Start));
+
+        var repositioned = session.Observe(
+            Snapshot(1, Start.AddMilliseconds(150), anchor: movedCaret),
+            receivedAt: null,
+            refreshAnchor: true);
+        var state = session.Advance(Start.AddMilliseconds(1050));
+
+        Assert.Equal(movedCaret, repositioned.Anchor);
+        Assert.Equal(IndicatorPhase.Fading, state.Phase);
+        Assert.Equal(0.75, state.Opacity, 3);
+    }
+
+    [Fact]
     public void UnknownInputStateNeverShows()
     {
         var session = new IndicatorSession(Transient);
@@ -245,6 +263,71 @@ public sealed class IndicatorSessionTests
 
         Assert.Equal(IndicatorPhase.Visible, state.Phase);
         Assert.Equal(IndicatorReasonCode.ContextEstablished, state.ReasonCode);
+    }
+
+    [Fact]
+    public void LikelyContextReturnUpdatesContextWithoutReplayingIndicator()
+    {
+        var session = new IndicatorSession(Transient);
+        _ = session.Observe(Snapshot(1, Start));
+        _ = session.Observe(Snapshot(
+            2,
+            Start.AddMilliseconds(100),
+            Eligibility.NoEditableFocus));
+
+        var returned = session.Observe(
+            Snapshot(3, Start.AddMilliseconds(300)),
+            receivedAt: null,
+            suppressContextReplay: true);
+        var genuineSwitch = session.Observe(Snapshot(4, Start.AddMilliseconds(600)));
+
+        Assert.Equal(IndicatorPhase.Hidden, returned.Phase);
+        Assert.Equal(IndicatorPhase.Visible, genuineSwitch.Phase);
+        Assert.Equal(IndicatorReasonCode.ContextEstablished, genuineSwitch.ReasonCode);
+    }
+
+    [Fact]
+    public void LikelyContextReturnIgnoresUnknownStateFromTemporaryFocusLoss()
+    {
+        var session = new IndicatorSession(Transient);
+        _ = session.Observe(Snapshot(
+            1,
+            Start,
+            inputState: InputState.Chinese));
+        _ = session.Observe(Snapshot(
+            2,
+            Start.AddMilliseconds(100),
+            Eligibility.NoEditableFocus,
+            inputState: InputState.Unknown));
+
+        var returned = session.Observe(
+            Snapshot(
+                3,
+                Start.AddMilliseconds(300),
+                inputState: InputState.Chinese),
+            receivedAt: null,
+            suppressContextReplay: true);
+
+        Assert.Equal(IndicatorPhase.Hidden, returned.Phase);
+        Assert.Equal(IndicatorReasonCode.ContextIneligible, returned.ReasonCode);
+    }
+
+    [Fact]
+    public void AlwaysVisibleModeReplaysALikelyContextReturn()
+    {
+        var session = new IndicatorSession(Transient with { AlwaysVisible = true });
+        _ = session.Observe(Snapshot(1, Start));
+        _ = session.Observe(Snapshot(
+            2,
+            Start.AddMilliseconds(100),
+            Eligibility.NoEditableFocus));
+
+        var returned = session.Observe(
+            Snapshot(3, Start.AddMilliseconds(300)),
+            receivedAt: null,
+            suppressContextReplay: true);
+
+        Assert.Equal(IndicatorPhase.Visible, returned.Phase);
     }
 
     [Fact]

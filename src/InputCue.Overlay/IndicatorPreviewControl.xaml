@@ -1,0 +1,36 @@
+<UserControl x:Class="InputCue.Overlay.IndicatorPreviewControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent"
+             IsHitTestVisible="False">
+    <Grid>
+        <Ellipse x:Name="IndicatorDot"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center"
+                 Stroke="#FFFFFFFF"
+                 StrokeThickness="2">
+            <Ellipse.Effect>
+                <DropShadowEffect BlurRadius="4"
+                                  Direction="270"
+                                  Opacity="0.28"
+                                  ShadowDepth="1" />
+            </Ellipse.Effect>
+        </Ellipse>
+        <Canvas x:Name="BadgeVisual"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Visibility="Collapsed">
+            <Border x:Name="BadgeShadow"
+                    Background="#FF000000" />
+            <Border x:Name="BadgeBody"
+                    Background="#FFFFFFFF"
+                    BorderBrush="#FF000000">
+                <Viewbox x:Name="BadgeGlyphViewbox"
+                         Stretch="Uniform">
+                    <Path x:Name="BadgeGlyph"
+                          Fill="#FF000000" />
+                </Viewbox>
+            </Border>
+        </Canvas>
+    </Grid>
+</UserControl>

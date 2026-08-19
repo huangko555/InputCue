@@ -4,4 +4,5 @@ public enum IndicatorStyle
 {
     Dot = 0,
     LightBadge,
+    ShadowBadge,
 }

@@ -13,4 +13,6 @@ public sealed record InputContextDiagnostic(
     ScreenRect? MsaaCaret,
     ProbeIssue Issue,
     double DurationMilliseconds,
-    InputStateEvidence? InputStateEvidence = null);
+    InputStateEvidence? InputStateEvidence = null,
+    bool IsPositionStabilization = false,
+    bool SuppressContextReplay = false);

@@ -10,7 +10,7 @@ internal static class OverlayPlacement
         PixelRect workArea,
         PixelSize overlaySize,
         int gap,
-        IndicatorPlacement placement = IndicatorPlacement.Right,
+        IndicatorPlacement placement = InputCueSettings.DefaultPlacement,
         int horizontalOffset = 0,
         int verticalOffset = 0)
     {

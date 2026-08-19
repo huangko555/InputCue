@@ -33,9 +33,14 @@ public sealed partial class RawKeyboardInputMonitor : IDisposable
             return true;
         }
 
-        var windowHandle = new WindowInteropHelper(window).Handle;
+        var windowHandle = new WindowInteropHelper(window).EnsureHandle();
+        if (windowHandle == 0)
+        {
+            return false;
+        }
+
         var source = HwndSource.FromHwnd(windowHandle);
-        if (windowHandle == 0 || source is null || !Register(windowHandle, RawInputInputSink))
+        if (source is null || !Register(windowHandle, RawInputInputSink))
         {
             return false;
         }

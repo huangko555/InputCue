@@ -5,7 +5,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Interop;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using InputCue.Core.Indicator;
 using InputCue.Core.InputContext;
@@ -19,14 +20,6 @@ namespace InputCue.App;
 public partial class MainWindow : Window, IDisposable
 {
     private const int HistoryCapacity = 200;
-    private const int PreviewGapDip = 6;
-    private const int PreviewWindowPaddingDip = 6;
-    private const double PreviewBadgeBaseSizeDip = 36;
-    private const double PreviewBadgeBorderDip = 2.5;
-    private const double PreviewBadgeInsetDip = 5;
-    private const double PreviewBadgeShadowOffsetDip = 4;
-    private const double PreviewWidthDip = 160;
-    private const double PreviewHeightDip = 90;
     private static readonly TimeSpan AnimationTickInterval = TimeSpan.FromMilliseconds(33);
     private static readonly TimeSpan CapsLockPollInterval = TimeSpan.FromMilliseconds(100);
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -53,12 +46,17 @@ public partial class MainWindow : Window, IDisposable
     private bool _started;
     private int _displayDurationMilliseconds;
     private int _minimumDisplayDurationMilliseconds;
-    private IndicatorPlacement _placement;
-    private int _horizontalOffsetDip;
-    private int _verticalOffsetDip;
-    private int _indicatorSizeDip;
     private IndicatorStyle _style;
-    private int _lightBadgeSizeDip;
+    private IndicatorStyle _editingStyle;
+    private IndicatorAppearanceSettings _dotAppearance;
+    private IndicatorAppearanceSettings _lightBadgeAppearance;
+    private IndicatorAppearanceSettings _shadowBadgeAppearance;
+    private long _diagnosticGenerationBaseline;
+    private bool _previewAllowed;
+    private string _chineseDotColor;
+    private string _englishDotColor;
+    private string _englishUsDotColor;
+    private string _capsLockDotColor;
 
     public event EventHandler? WatchingStateChanged;
 
@@ -79,21 +77,24 @@ public partial class MainWindow : Window, IDisposable
         _indicatorEnabled = settings.IndicatorEnabled;
         _displayDurationMilliseconds = settings.DisplayDurationMilliseconds;
         _minimumDisplayDurationMilliseconds = settings.MinimumDisplayDurationMilliseconds;
-        _placement = settings.Placement;
-        _horizontalOffsetDip = settings.HorizontalOffsetDip;
-        _verticalOffsetDip = settings.VerticalOffsetDip;
-        _indicatorSizeDip = settings.IndicatorSizeDip;
         _style = settings.Style;
-        _lightBadgeSizeDip = settings.LightBadgeSizeDip;
+        _editingStyle = _style;
+        _dotAppearance = settings.GetAppearance(IndicatorStyle.Dot);
+        _lightBadgeAppearance = settings.GetAppearance(IndicatorStyle.LightBadge);
+        _shadowBadgeAppearance = settings.GetAppearance(IndicatorStyle.ShadowBadge);
+        _chineseDotColor = settings.ChineseDotColor;
+        _englishDotColor = settings.EnglishDotColor;
+        _englishUsDotColor = settings.EnglishUsDotColor;
+        _capsLockDotColor = settings.CapsLockDotColor;
         DisplayDurationTextBox.Text = _displayDurationMilliseconds.ToString(CultureInfo.InvariantCulture);
         MinimumDisplayDurationTextBox.Text =
             _minimumDisplayDurationMilliseconds.ToString(CultureInfo.InvariantCulture);
-        DotSizeTextBox.Text = _indicatorSizeDip.ToString(CultureInfo.InvariantCulture);
-        BadgeSizeTextBox.Text = _lightBadgeSizeDip.ToString(CultureInfo.InvariantCulture);
-        HorizontalOffsetTextBox.Text = _horizontalOffsetDip.ToString(CultureInfo.InvariantCulture);
-        VerticalOffsetTextBox.Text = _verticalOffsetDip.ToString(CultureInfo.InvariantCulture);
+        ChineseDotColorTextBox.Text = _chineseDotColor;
+        EnglishDotColorTextBox.Text = _englishDotColor;
+        EnglishUsDotColorTextBox.Text = _englishUsDotColor;
+        CapsLockDotColorTextBox.Text = _capsLockDotColor;
         SetStyleSelection(_style);
-        SetPlacementSelection(_placement);
+        LoadAppearance(_editingStyle);
         UpdateStylePanels();
         ConfigureOverlay();
         UpdatePlacementPreview();
@@ -121,7 +122,6 @@ public partial class MainWindow : Window, IDisposable
         }
 
         _started = true;
-        _ = new WindowInteropHelper(this).EnsureHandle();
         _ = _keyboardInputMonitor.Attach(this);
         StartWatching();
     }
@@ -171,6 +171,7 @@ public partial class MainWindow : Window, IDisposable
         {
             _overlayPresenter.Hide();
             _indicatorTimer.Stop();
+            ShowPreviewOverlay();
             if (!saved)
             {
                 StatusText.Text = "提示已关闭，但设置未能保存。";
@@ -179,7 +180,11 @@ public partial class MainWindow : Window, IDisposable
             return;
         }
 
-        if (_lastBaseDiagnostic is { } diagnostic)
+        if (IsActive)
+        {
+            ShowPreviewOverlay();
+        }
+        else if (_lastBaseDiagnostic is { } diagnostic)
         {
             var indicatorState = _indicatorSession.Advance(DateTimeOffset.UtcNow);
             _overlayPresenter.Update(indicatorState);
@@ -221,13 +226,8 @@ public partial class MainWindow : Window, IDisposable
             return;
         }
 
-        if (!TryReadPositionSettings(
-                out var style,
-                out var placement,
-                out var horizontalOffsetDip,
-                out var verticalOffsetDip,
-                out var indicatorSizeDip,
-                out var lightBadgeSizeDip))
+        var style = GetSelectedStyle();
+        if (!TryReadAppearance(style, out var appearance))
         {
             StatusText.Text =
                 $"圆点尺寸必须为 {InputCueSettings.MinimumIndicatorSizeDip} 到 " +
@@ -238,22 +238,32 @@ public partial class MainWindow : Window, IDisposable
             return;
         }
 
+        if (!TryReadDotColors(
+                out var chineseDotColor,
+                out var englishDotColor,
+                out var englishUsDotColor,
+                out var capsLockDotColor))
+        {
+            StatusText.Text = "圆点颜色必须是 6 位十六进制颜色值。";
+            return;
+        }
+
         _displayDurationMilliseconds = displayDuration;
         _minimumDisplayDurationMilliseconds = minimumDisplayDuration;
         _style = style;
-        _placement = placement;
-        _horizontalOffsetDip = horizontalOffsetDip;
-        _verticalOffsetDip = verticalOffsetDip;
-        _indicatorSizeDip = indicatorSizeDip;
-        _lightBadgeSizeDip = lightBadgeSizeDip;
+        _editingStyle = style;
+        SetAppearance(style, appearance);
+        _chineseDotColor = chineseDotColor;
+        _englishDotColor = englishDotColor;
+        _englishUsDotColor = englishUsDotColor;
+        _capsLockDotColor = capsLockDotColor;
         _indicatorSession = CreateIndicatorSession(displayDuration, minimumDisplayDuration);
         _overlayPresenter.Hide();
         ConfigureOverlay();
         _indicatorTimer.Stop();
-        var appliedSize = style == IndicatorStyle.Dot ? indicatorSizeDip : lightBadgeSizeDip;
         StatusText.Text = PersistSettings()
-            ? $"已应用并保存：{StyleName(style)}，{PlacementName(placement)}，尺寸 {appliedSize}，" +
-              $"微调 ({horizontalOffsetDip}, {verticalOffsetDip})。"
+            ? $"已应用并保存：{StyleName(style)}，{PlacementName(appearance.Placement)}，尺寸 {appearance.SizeDip}，" +
+              $"微调 ({appearance.HorizontalOffsetDip}, {appearance.VerticalOffsetDip})。"
             : "设置已应用，但未能保存。";
     }
 
@@ -261,6 +271,13 @@ public partial class MainWindow : Window, IDisposable
     {
         if (_settingsInitialized)
         {
+            if (TryReadAppearance(_editingStyle, out var appearance))
+            {
+                SetAppearance(_editingStyle, appearance);
+            }
+
+            _editingStyle = GetSelectedStyle();
+            LoadAppearance(_editingStyle);
             UpdateStylePanels();
             UpdatePlacementPreview();
         }
@@ -276,11 +293,158 @@ public partial class MainWindow : Window, IDisposable
 
     private void OnResetPlacementClick(object sender, RoutedEventArgs e)
     {
-        SetPlacementSelection(IndicatorPlacement.Right);
+        var style = GetSelectedStyle();
+        SetPlacementSelection(InputCueSettings.DefaultPlacement);
+        var sizeText = (style == IndicatorStyle.Dot
+                ? InputCueSettings.DefaultIndicatorSizeDip
+                : InputCueSettings.DefaultLightBadgeSizeDip)
+            .ToString(CultureInfo.InvariantCulture);
+        if (style == IndicatorStyle.Dot)
+        {
+            DotSizeTextBox.Text = sizeText;
+        }
+        else
+        {
+            BadgeSizeTextBox.Text = sizeText;
+        }
+
         HorizontalOffsetTextBox.Text = "0";
         VerticalOffsetTextBox.Text = "0";
+        ChineseDotColorTextBox.Text = InputCueSettings.DefaultChineseDotColor;
+        EnglishDotColorTextBox.Text = InputCueSettings.DefaultEnglishDotColor;
+        EnglishUsDotColorTextBox.Text = InputCueSettings.DefaultEnglishUsDotColor;
+        CapsLockDotColorTextBox.Text = InputCueSettings.DefaultCapsLockDotColor;
         UpdatePlacementPreview();
     }
+
+    private void OnHexColorPreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        e.Handled = e.Text.Any(character => !Uri.IsHexDigit(character));
+    }
+
+    private void OnHexColorPasting(object sender, DataObjectPastingEventArgs e)
+    {
+        if (sender is not TextBox textBox || !e.SourceDataObject.GetDataPresent(DataFormats.UnicodeText))
+        {
+            e.CancelCommand();
+            return;
+        }
+
+        var pasted = e.SourceDataObject.GetData(DataFormats.UnicodeText) as string ?? string.Empty;
+        var normalized = new string(pasted.Where(Uri.IsHexDigit).Take(6).ToArray()).ToUpperInvariant();
+        e.CancelCommand();
+        textBox.Text = normalized;
+        textBox.CaretIndex = normalized.Length;
+    }
+
+    private void OnDotColorChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateDotColorSwatches();
+        if (_settingsInitialized && TryReadDotColors(out _, out _, out _, out _))
+        {
+            UpdatePlacementPreview();
+        }
+    }
+
+    private void OnClearDiagnosticsClick(object sender, RoutedEventArgs e)
+    {
+        _history.Clear();
+        _diagnosticGenerationBaseline = _lastBaseDiagnostic?.Snapshot.Generation ?? 0;
+        DiagnosticSummaryText.Text = "尚无观察记录。";
+        DiagnosticText.Text = "尚未观察到外部应用。";
+    }
+
+    private void OnStepperClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string tag })
+        {
+            return;
+        }
+
+        var separatorIndex = tag.LastIndexOf(':');
+        if (separatorIndex <= 0 ||
+            !int.TryParse(tag[(separatorIndex + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var delta))
+        {
+            return;
+        }
+
+        var appearance = GetAppearance(_editingStyle);
+        var target = tag[..separatorIndex] switch
+        {
+            "DotSize" => (
+                TextBox: DotSizeTextBox,
+                Minimum: InputCueSettings.MinimumIndicatorSizeDip,
+                Maximum: InputCueSettings.MaximumIndicatorSizeDip,
+                Fallback: appearance.SizeDip),
+            "BadgeSize" => (
+                TextBox: BadgeSizeTextBox,
+                Minimum: InputCueSettings.MinimumLightBadgeSizeDip,
+                Maximum: InputCueSettings.MaximumLightBadgeSizeDip,
+                Fallback: appearance.SizeDip),
+            "Horizontal" => (
+                TextBox: HorizontalOffsetTextBox,
+                Minimum: InputCueSettings.MinimumOffsetDip,
+                Maximum: InputCueSettings.MaximumOffsetDip,
+                Fallback: appearance.HorizontalOffsetDip),
+            "Vertical" => (
+                TextBox: VerticalOffsetTextBox,
+                Minimum: InputCueSettings.MinimumOffsetDip,
+                Maximum: InputCueSettings.MaximumOffsetDip,
+                Fallback: appearance.VerticalOffsetDip),
+            _ => default,
+        };
+        if (target.TextBox is null)
+        {
+            return;
+        }
+
+        var currentValue = int.TryParse(
+            target.TextBox.Text,
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out var parsedValue)
+            ? parsedValue
+            : target.Fallback;
+        target.TextBox.Text = Math.Clamp(
+                currentValue + delta,
+                target.Minimum,
+                target.Maximum)
+            .ToString(CultureInfo.InvariantCulture);
+    }
+
+    private void OnPreviewLayoutChanged(object? sender, EventArgs e)
+    {
+        if (!_settingsInitialized)
+        {
+            return;
+        }
+
+        if (!IsVisible || WindowState is WindowState.Minimized)
+        {
+            _previewAllowed = false;
+            PreviewIndicator.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        _previewAllowed = true;
+        _ = Dispatcher.BeginInvoke(ShowPreviewOverlay, DispatcherPriority.Loaded);
+    }
+
+    private void OnPreviewVisibilityChanged(object? sender, EventArgs e)
+    {
+        if (!IsVisible || WindowState is WindowState.Minimized)
+        {
+            _previewAllowed = false;
+            PreviewIndicator.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        _previewAllowed = true;
+        ShowPreviewOverlay();
+    }
+
+    private void OnPreviewIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) =>
+        OnPreviewVisibilityChanged(sender, EventArgs.Empty);
 
     private async void OnExportClick(object sender, RoutedEventArgs e)
     {
@@ -326,6 +490,7 @@ public partial class MainWindow : Window, IDisposable
 
         _watchCancellation = new CancellationTokenSource();
         PauseButton.Content = "暂停";
+        RefreshWatchingStatus();
         StatusText.Text = "正在监听。请切换到其他应用测试，InputCue 自身不会成为观察目标。";
         WatchingStateChanged?.Invoke(this, EventArgs.Empty);
         _ = WatchAsync(_watchCancellation.Token);
@@ -340,8 +505,22 @@ public partial class MainWindow : Window, IDisposable
         _overlayPresenter.Hide();
         _indicatorTimer.Stop();
         PauseButton.Content = "继续";
+        RefreshWatchingStatus();
+        ShowPreviewOverlay();
         StatusText.Text = "诊断探针已暂停。";
         WatchingStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void RefreshWatchingStatus()
+    {
+        var isWatching = IsWatching;
+        WatchingStatusText.Text = isWatching ? "正在监听" : "已暂停";
+        WatchingStatusText.Foreground = isWatching
+            ? (Brush)FindResource("MutedBrush")
+            : (Brush)FindResource("PausedBrush");
+        WatchingStatusDot.Fill = isWatching
+            ? (Brush)FindResource("ListeningBrush")
+            : (Brush)FindResource("PausedBrush");
     }
 
     private async Task WatchAsync(CancellationToken cancellationToken)
@@ -364,6 +543,7 @@ public partial class MainWindow : Window, IDisposable
                 PauseButton.Content = "继续";
                 _watchCancellation?.Dispose();
                 _watchCancellation = null;
+                RefreshWatchingStatus();
                 WatchingStateChanged?.Invoke(this, EventArgs.Empty);
             });
         }
@@ -381,7 +561,9 @@ public partial class MainWindow : Window, IDisposable
         _history.Add(diagnostic);
         var indicatorState = _indicatorSession.Observe(
             diagnostic.Snapshot,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            diagnostic.IsPositionStabilization,
+            diagnostic.SuppressContextReplay);
         if (_indicatorEnabled)
         {
             _overlayPresenter.Update(indicatorState);
@@ -393,8 +575,8 @@ public partial class MainWindow : Window, IDisposable
 
         UpdateIndicatorTimer(indicatorState, diagnostic.Snapshot.Eligibility);
 
-        StatusText.Text =
-            $"正在监听 · 最近观察 {diagnostic.Snapshot.ObservedAt.ToLocalTime():HH:mm:ss.fff} · " +
+        DiagnosticSummaryText.Text =
+            $"最近观察 {diagnostic.Snapshot.ObservedAt.ToLocalTime():HH:mm:ss.fff} · " +
             $"耗时 {diagnostic.DurationMilliseconds:F1} ms";
         DiagnosticText.Text = FormatDiagnostic(diagnostic);
     }
@@ -508,40 +690,42 @@ public partial class MainWindow : Window, IDisposable
             out milliseconds) &&
         milliseconds is >= 0 and <= 60000;
 
-    private bool TryReadPositionSettings(
-        out IndicatorStyle style,
-        out IndicatorPlacement placement,
-        out int horizontalOffsetDip,
-        out int verticalOffsetDip,
-        out int indicatorSizeDip,
-        out int lightBadgeSizeDip)
+    private bool TryReadAppearance(
+        IndicatorStyle style,
+        out IndicatorAppearanceSettings appearance)
     {
-        style = GetSelectedStyle();
-        placement = GetSelectedPlacement() ?? _placement;
-        horizontalOffsetDip = 0;
-        verticalOffsetDip = 0;
-        indicatorSizeDip = 0;
-        lightBadgeSizeDip = 0;
-        return TryReadBoundedInteger(
+        var fallback = GetAppearance(style);
+        appearance = fallback;
+        var sizeText = style == IndicatorStyle.Dot
+            ? DotSizeTextBox.Text
+            : BadgeSizeTextBox.Text;
+        var minimumSize = style == IndicatorStyle.Dot
+            ? InputCueSettings.MinimumIndicatorSizeDip
+            : InputCueSettings.MinimumLightBadgeSizeDip;
+        var maximumSize = style == IndicatorStyle.Dot
+            ? InputCueSettings.MaximumIndicatorSizeDip
+            : InputCueSettings.MaximumLightBadgeSizeDip;
+        if (!TryReadBoundedInteger(
                 HorizontalOffsetTextBox.Text,
                 InputCueSettings.MinimumOffsetDip,
                 InputCueSettings.MaximumOffsetDip,
-                out horizontalOffsetDip) &&
-            TryReadBoundedInteger(
+                out var horizontalOffsetDip) ||
+            !TryReadBoundedInteger(
                 VerticalOffsetTextBox.Text,
                 InputCueSettings.MinimumOffsetDip,
                 InputCueSettings.MaximumOffsetDip,
-                out verticalOffsetDip) &&
-            TryReadBoundedInteger(
-                DotSizeTextBox.Text,
-                InputCueSettings.MinimumIndicatorSizeDip,
-                InputCueSettings.MaximumIndicatorSizeDip,
-                out indicatorSizeDip) &&
-            TryReadBoundedInteger(
-                BadgeSizeTextBox.Text,
-                InputCueSettings.MinimumLightBadgeSizeDip,
-                InputCueSettings.MaximumLightBadgeSizeDip,
-                out lightBadgeSizeDip);
+                out var verticalOffsetDip) ||
+            !TryReadBoundedInteger(sizeText, minimumSize, maximumSize, out var sizeDip))
+        {
+            return false;
+        }
+
+        appearance = new IndicatorAppearanceSettings(
+            GetSelectedPlacement() ?? fallback.Placement,
+            horizontalOffsetDip,
+            verticalOffsetDip,
+            sizeDip);
+        return true;
     }
 
     private static bool TryReadBoundedInteger(
@@ -556,6 +740,45 @@ public partial class MainWindow : Window, IDisposable
             out value) &&
         value >= minimum &&
         value <= maximum;
+
+    private bool TryReadDotColors(
+        out string chinese,
+        out string english,
+        out string englishUs,
+        out string capsLock)
+    {
+        chinese = ChineseDotColorTextBox.Text.ToUpperInvariant();
+        english = EnglishDotColorTextBox.Text.ToUpperInvariant();
+        englishUs = EnglishUsDotColorTextBox.Text.ToUpperInvariant();
+        capsLock = CapsLockDotColorTextBox.Text.ToUpperInvariant();
+        return InputCueSettings.IsHexColor(chinese) &&
+            InputCueSettings.IsHexColor(english) &&
+            InputCueSettings.IsHexColor(englishUs) &&
+            InputCueSettings.IsHexColor(capsLock);
+    }
+
+    private void UpdateDotColorSwatches()
+    {
+        if (ChineseDotColorTextBox is null || EnglishDotColorTextBox is null ||
+            EnglishUsDotColorTextBox is null || CapsLockDotColorTextBox is null)
+        {
+            return;
+        }
+
+        UpdateDotColorSwatch(ChineseDotColorTextBox, ChineseDotColorSwatch);
+        UpdateDotColorSwatch(EnglishDotColorTextBox, EnglishDotColorSwatch);
+        UpdateDotColorSwatch(EnglishUsDotColorTextBox, EnglishUsDotColorSwatch);
+        UpdateDotColorSwatch(CapsLockDotColorTextBox, CapsLockDotColorSwatch);
+        UpdateDotColorSwatch(ChineseDotColorTextBox, StyleDotPreview);
+    }
+
+    private static void UpdateDotColorSwatch(TextBox textBox, System.Windows.Shapes.Shape swatch)
+    {
+        if (InputCueSettings.IsHexColor(textBox.Text))
+        {
+            swatch.Fill = (Brush)new BrushConverter().ConvertFromString($"#{textBox.Text}")!;
+        }
+    }
 
     private IndicatorPlacement? GetSelectedPlacement()
     {
@@ -573,14 +796,62 @@ public partial class MainWindow : Window, IDisposable
     }
 
     private IndicatorStyle GetSelectedStyle() =>
-        LightBadgeStyleRadio.IsChecked is true
-            ? IndicatorStyle.LightBadge
-            : IndicatorStyle.Dot;
+        ShadowBadgeStyleRadio.IsChecked is true
+            ? IndicatorStyle.ShadowBadge
+            : LightBadgeStyleRadio.IsChecked is true
+                ? IndicatorStyle.LightBadge
+                : IndicatorStyle.Dot;
 
     private void SetStyleSelection(IndicatorStyle style)
     {
         DotStyleRadio.IsChecked = style == IndicatorStyle.Dot;
         LightBadgeStyleRadio.IsChecked = style == IndicatorStyle.LightBadge;
+        ShadowBadgeStyleRadio.IsChecked = style == IndicatorStyle.ShadowBadge;
+    }
+
+    private IndicatorAppearanceSettings GetAppearance(IndicatorStyle style) => style switch
+    {
+        IndicatorStyle.Dot => _dotAppearance,
+        IndicatorStyle.LightBadge => _lightBadgeAppearance,
+        IndicatorStyle.ShadowBadge => _shadowBadgeAppearance,
+        _ => throw new ArgumentOutOfRangeException(nameof(style), style, null),
+    };
+
+    private void SetAppearance(IndicatorStyle style, IndicatorAppearanceSettings appearance)
+    {
+        switch (style)
+        {
+            case IndicatorStyle.Dot:
+                _dotAppearance = appearance;
+                break;
+            case IndicatorStyle.LightBadge:
+                _lightBadgeAppearance = appearance;
+                break;
+            case IndicatorStyle.ShadowBadge:
+                _shadowBadgeAppearance = appearance;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(style), style, null);
+        }
+    }
+
+    private void LoadAppearance(IndicatorStyle style)
+    {
+        var appearance = GetAppearance(style);
+        SetPlacementSelection(appearance.Placement);
+        if (style == IndicatorStyle.Dot)
+        {
+            DotSizeTextBox.Text = appearance.SizeDip.ToString(CultureInfo.InvariantCulture);
+        }
+        else
+        {
+            BadgeSizeTextBox.Text = appearance.SizeDip.ToString(CultureInfo.InvariantCulture);
+        }
+
+        HorizontalOffsetTextBox.Text =
+            appearance.HorizontalOffsetDip.ToString(CultureInfo.InvariantCulture);
+        VerticalOffsetTextBox.Text =
+            appearance.VerticalOffsetDip.ToString(CultureInfo.InvariantCulture);
     }
 
     private void UpdateStylePanels()
@@ -589,7 +860,10 @@ public partial class MainWindow : Window, IDisposable
         DotSizePanel.Visibility = style == IndicatorStyle.Dot
             ? Visibility.Visible
             : Visibility.Collapsed;
-        BadgeSizePanel.Visibility = style == IndicatorStyle.LightBadge
+        BadgeSizePanel.Visibility = style is IndicatorStyle.LightBadge or IndicatorStyle.ShadowBadge
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        DotColorPanel.Visibility = style == IndicatorStyle.Dot
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
@@ -608,113 +882,159 @@ public partial class MainWindow : Window, IDisposable
     private void UpdatePlacementPreview()
     {
         var style = GetSelectedStyle();
-        var placement = GetSelectedPlacement() ?? _placement;
-        var dotSize = TryReadBoundedInteger(
-            DotSizeTextBox.Text,
-            InputCueSettings.MinimumIndicatorSizeDip,
-            InputCueSettings.MaximumIndicatorSizeDip,
-            out var parsedSize)
+        var fallback = GetAppearance(style);
+        var placement = GetSelectedPlacement() ?? fallback.Placement;
+        var sizeText = style == IndicatorStyle.Dot
+            ? DotSizeTextBox.Text
+            : BadgeSizeTextBox.Text;
+        var minimumSize = style == IndicatorStyle.Dot
+            ? InputCueSettings.MinimumIndicatorSizeDip
+            : InputCueSettings.MinimumLightBadgeSizeDip;
+        var maximumSize = style == IndicatorStyle.Dot
+            ? InputCueSettings.MaximumIndicatorSizeDip
+            : InputCueSettings.MaximumLightBadgeSizeDip;
+        var size = TryReadBoundedInteger(sizeText, minimumSize, maximumSize, out var parsedSize)
             ? parsedSize
-            : Math.Clamp(
-                _indicatorSizeDip,
-                InputCueSettings.MinimumIndicatorSizeDip,
-                InputCueSettings.MaximumIndicatorSizeDip);
-        var badgeSize = TryReadBoundedInteger(
-            BadgeSizeTextBox.Text,
-            InputCueSettings.MinimumLightBadgeSizeDip,
-            InputCueSettings.MaximumLightBadgeSizeDip,
-            out var parsedBadgeSize)
-            ? parsedBadgeSize
-            : Math.Clamp(
-                _lightBadgeSizeDip,
-                InputCueSettings.MinimumLightBadgeSizeDip,
-                InputCueSettings.MaximumLightBadgeSizeDip);
+            : fallback.SizeDip;
+        var dotSize = style == IndicatorStyle.Dot ? size : _dotAppearance.SizeDip;
+        var badgeSize = style == IndicatorStyle.Dot ? _lightBadgeAppearance.SizeDip : size;
         var horizontalOffset = TryReadBoundedInteger(
             HorizontalOffsetTextBox.Text,
             InputCueSettings.MinimumOffsetDip,
             InputCueSettings.MaximumOffsetDip,
             out var parsedHorizontalOffset)
             ? parsedHorizontalOffset
-            : _horizontalOffsetDip;
+            : fallback.HorizontalOffsetDip;
         var verticalOffset = TryReadBoundedInteger(
             VerticalOffsetTextBox.Text,
             InputCueSettings.MinimumOffsetDip,
             InputCueSettings.MaximumOffsetDip,
             out var parsedVerticalOffset)
             ? parsedVerticalOffset
-            : _verticalOffsetDip;
-
-        const double caretLeft = 79;
-        const double caretTop = 31;
-        const double caretWidth = 2;
-        const double caretHeight = 28;
-        var badgeScale = badgeSize / PreviewBadgeBaseSizeDip;
-        var badgeShadowOffset = PreviewBadgeShadowOffsetDip * badgeScale;
-        var windowSize = style == IndicatorStyle.Dot
-            ? dotSize + PreviewWindowPaddingDip
-            : badgeSize + badgeShadowOffset;
-        var centeredX = caretLeft + ((caretWidth - windowSize) / 2);
-        var centeredY = caretTop + ((caretHeight - windowSize) / 2);
-        var leftX = caretLeft - PreviewGapDip - windowSize;
-        var rightX = caretLeft + caretWidth + PreviewGapDip;
-        var topY = caretTop - PreviewGapDip - windowSize;
-        var bottomY = caretTop + caretHeight + PreviewGapDip;
-
-        var (windowX, windowY) = placement switch
+            : fallback.VerticalOffsetDip;
+        if (!TryReadDotColors(
+                out var chineseDotColor,
+                out var englishDotColor,
+                out var englishUsDotColor,
+                out var capsLockDotColor))
         {
-            IndicatorPlacement.TopLeft => (leftX, topY),
-            IndicatorPlacement.Top => (centeredX, topY),
-            IndicatorPlacement.TopRight => (rightX, topY),
-            IndicatorPlacement.Left => (leftX, centeredY),
-            IndicatorPlacement.Right => (rightX, centeredY),
-            IndicatorPlacement.BottomLeft => (leftX, bottomY),
-            IndicatorPlacement.Bottom => (centeredX, bottomY),
-            IndicatorPlacement.BottomRight => (rightX, bottomY),
-            _ => (rightX, centeredY),
-        };
-        windowX = Math.Clamp(windowX + horizontalOffset, 0, PreviewWidthDip - windowSize);
-        windowY = Math.Clamp(windowY + verticalOffset, 0, PreviewHeightDip - windowSize);
+            chineseDotColor = _chineseDotColor;
+            englishDotColor = _englishDotColor;
+            englishUsDotColor = _englishUsDotColor;
+            capsLockDotColor = _capsLockDotColor;
+        }
 
-        PlacementPreviewDot.Visibility = style == IndicatorStyle.Dot
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        PlacementPreviewBadge.Visibility = style == IndicatorStyle.LightBadge
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        PlacementPreviewDot.Width = dotSize;
-        PlacementPreviewDot.Height = dotSize;
-        Canvas.SetLeft(PlacementPreviewDot, windowX + (PreviewWindowPaddingDip / 2d));
-        Canvas.SetTop(PlacementPreviewDot, windowY + (PreviewWindowPaddingDip / 2d));
-
-        PlacementPreviewBadge.Width = windowSize;
-        PlacementPreviewBadge.Height = windowSize;
-        PlacementPreviewBadgeShadow.Width = badgeSize;
-        PlacementPreviewBadgeShadow.Height = badgeSize;
-        Canvas.SetLeft(PlacementPreviewBadgeShadow, badgeShadowOffset);
-        Canvas.SetTop(PlacementPreviewBadgeShadow, badgeShadowOffset);
-        PlacementPreviewBadgeBody.Width = badgeSize;
-        PlacementPreviewBadgeBody.Height = badgeSize;
-        PlacementPreviewBadgeBody.BorderThickness =
-            new Thickness(PreviewBadgeBorderDip * badgeScale);
-        PlacementPreviewBadgeViewbox.Margin =
-            new Thickness(PreviewBadgeInsetDip * badgeScale);
-        Canvas.SetLeft(PlacementPreviewBadge, windowX);
-        Canvas.SetTop(PlacementPreviewBadge, windowY);
+        _overlayPresenter.Configure(
+            style,
+            placement,
+            horizontalOffset,
+            verticalOffset,
+            dotSize,
+            badgeSize,
+            chineseDotColor,
+            englishDotColor,
+            englishUsDotColor,
+            capsLockDotColor);
+        PreviewIndicator.Configure(
+            style,
+            dotSize,
+            badgeSize,
+            chineseDotColor,
+            englishDotColor,
+            englishUsDotColor,
+            capsLockDotColor);
+        ShowPreviewOverlay();
     }
 
-    private void ConfigureOverlay() =>
+    private void ShowPreviewOverlay()
+    {
+        if (!_settingsInitialized || !_previewAllowed || !IsVisible ||
+            WindowState is WindowState.Minimized ||
+            !PreviewCaret.IsVisible || PreviewCaret.ActualWidth <= 0 || PreviewCaret.ActualHeight <= 0)
+        {
+            PreviewIndicator.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var inputState = _lastBaseDiagnostic?.Snapshot.InputState ?? InputState.Chinese;
+        inputState = EffectiveInputState.Resolve(inputState, UiCapsLockProbe.IsEnabled());
+        if (inputState is InputState.Unknown)
+        {
+            inputState = InputState.Chinese;
+        }
+
+        PreviewIndicator.Render(inputState);
+        PreviewIndicator.Visibility = Visibility.Visible;
+        PositionPreviewIndicator();
+    }
+
+    private void PositionPreviewIndicator()
+    {
+        const double gap = 6;
+        var anchor = new Rect(
+            PreviewCaret.TranslatePoint(new Point(), PreviewCanvas),
+            PreviewCaret.RenderSize);
+        var width = PreviewIndicator.Width;
+        var height = PreviewIndicator.Height;
+        var fallback = GetAppearance(GetSelectedStyle());
+        var placement = GetSelectedPlacement() ?? fallback.Placement;
+        var horizontalOffset = int.TryParse(HorizontalOffsetTextBox.Text, out var parsedHorizontal)
+            ? parsedHorizontal
+            : fallback.HorizontalOffsetDip;
+        var verticalOffset = int.TryParse(VerticalOffsetTextBox.Text, out var parsedVertical)
+            ? parsedVertical
+            : fallback.VerticalOffsetDip;
+        var centeredX = anchor.Left + ((anchor.Width - width) / 2);
+        var centeredY = anchor.Top + ((anchor.Height - height) / 2);
+        var position = placement switch
+        {
+            IndicatorPlacement.TopLeft => new Point(anchor.Left - gap - width, anchor.Top - gap - height),
+            IndicatorPlacement.Top => new Point(centeredX, anchor.Top - gap - height),
+            IndicatorPlacement.TopRight => new Point(anchor.Right + gap, anchor.Top - gap - height),
+            IndicatorPlacement.Left => new Point(anchor.Left - gap - width, centeredY),
+            IndicatorPlacement.Right => new Point(anchor.Right + gap, centeredY),
+            IndicatorPlacement.BottomLeft => new Point(anchor.Left - gap - width, anchor.Bottom + gap),
+            IndicatorPlacement.Bottom => new Point(centeredX, anchor.Bottom + gap),
+            IndicatorPlacement.BottomRight => new Point(anchor.Right + gap, anchor.Bottom + gap),
+            _ => new Point(anchor.Right + gap, anchor.Bottom + gap),
+        };
+        Canvas.SetLeft(
+            PreviewIndicator,
+            Math.Clamp(position.X + horizontalOffset, 0, Math.Max(0, PreviewCanvas.ActualWidth - width)));
+        Canvas.SetTop(
+            PreviewIndicator,
+            Math.Clamp(position.Y + verticalOffset, 0, Math.Max(0, PreviewCanvas.ActualHeight - height)));
+    }
+
+    private void ConfigureOverlay()
+    {
+        var appearance = GetAppearance(_style);
         _overlayPresenter.Configure(
             _style,
-            _placement,
-            _horizontalOffsetDip,
-            _verticalOffsetDip,
-            _indicatorSizeDip,
-            _lightBadgeSizeDip);
+            appearance.Placement,
+            appearance.HorizontalOffsetDip,
+            appearance.VerticalOffsetDip,
+            _dotAppearance.SizeDip,
+            _style == IndicatorStyle.Dot ? _lightBadgeAppearance.SizeDip : appearance.SizeDip,
+            _chineseDotColor,
+            _englishDotColor,
+            _englishUsDotColor,
+            _capsLockDotColor);
+        PreviewIndicator.Configure(
+            _style,
+            _dotAppearance.SizeDip,
+            _style == IndicatorStyle.Dot ? _lightBadgeAppearance.SizeDip : appearance.SizeDip,
+            _chineseDotColor,
+            _englishDotColor,
+            _englishUsDotColor,
+            _capsLockDotColor);
+    }
 
     private static string StyleName(IndicatorStyle style) => style switch
     {
         IndicatorStyle.Dot => "圆点",
-        IndicatorStyle.LightBadge => "亮色徽标",
+        IndicatorStyle.LightBadge => "描边",
+        IndicatorStyle.ShadowBadge => "阴影",
         _ => "圆点",
     };
 
@@ -731,27 +1051,42 @@ public partial class MainWindow : Window, IDisposable
         _ => "右侧",
     };
 
-    private bool PersistSettings() =>
-        !_settingsInitialized ||
-        _saveSettings(new InputCueSettings(
+    private bool PersistSettings()
+    {
+        if (!_settingsInitialized)
+        {
+            return true;
+        }
+
+        var activeAppearance = GetAppearance(_style);
+        return _saveSettings(new InputCueSettings(
             _indicatorEnabled,
             _displayDurationMilliseconds,
             _minimumDisplayDurationMilliseconds,
-            _placement,
-            _horizontalOffsetDip,
-            _verticalOffsetDip,
-            _indicatorSizeDip,
+            activeAppearance.Placement,
+            activeAppearance.HorizontalOffsetDip,
+            activeAppearance.VerticalOffsetDip,
+            _dotAppearance.SizeDip,
             _style,
-            _lightBadgeSizeDip));
+            _lightBadgeAppearance.SizeDip,
+            _chineseDotColor,
+            _englishDotColor,
+            _englishUsDotColor,
+            _capsLockDotColor,
+            _dotAppearance,
+            _lightBadgeAppearance,
+            _shadowBadgeAppearance));
+    }
 
-    private static string FormatDiagnostic(InputContextDiagnostic diagnostic)
+    private string FormatDiagnostic(InputContextDiagnostic diagnostic)
     {
         var snapshot = diagnostic.Snapshot;
+        var displayedGeneration = Math.Max(0, snapshot.Generation - _diagnosticGenerationBaseline);
         var inputStateEvidence = diagnostic.InputStateEvidence ?? InputStateEvidence.Unavailable;
         return string.Create(
             CultureInfo.InvariantCulture,
             $"""
-            Generation        {snapshot.Generation}
+            Generation        {displayedGeneration}
             Eligibility       {snapshot.Eligibility}
             InputState        {snapshot.InputState}
             InputLanguage     {FormatHex(inputStateEvidence.LanguageId)}

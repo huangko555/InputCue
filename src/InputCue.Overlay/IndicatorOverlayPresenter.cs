@@ -5,8 +5,13 @@ namespace InputCue.Overlay;
 
 public sealed class IndicatorOverlayPresenter : IDisposable
 {
-    private readonly IndicatorOverlayWindow _window = new();
+    private readonly IndicatorOverlayWindow _window;
     private bool _disposed;
+
+    public IndicatorOverlayPresenter()
+    {
+        _window = new IndicatorOverlayWindow();
+    }
 
     public void Configure(
         IndicatorStyle style,
@@ -14,7 +19,11 @@ public sealed class IndicatorOverlayPresenter : IDisposable
         int horizontalOffsetDip,
         int verticalOffsetDip,
         int indicatorSizeDip,
-        int lightBadgeSizeDip)
+        int lightBadgeSizeDip,
+        string chineseDotColor,
+        string englishDotColor,
+        string englishUsDotColor,
+        string capsLockDotColor)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _window.Configure(
@@ -23,7 +32,11 @@ public sealed class IndicatorOverlayPresenter : IDisposable
             horizontalOffsetDip,
             verticalOffsetDip,
             indicatorSizeDip,
-            lightBadgeSizeDip);
+            lightBadgeSizeDip,
+            chineseDotColor,
+            englishDotColor,
+            englishUsDotColor,
+            capsLockDotColor);
     }
 
     public void Update(IndicatorViewState state)

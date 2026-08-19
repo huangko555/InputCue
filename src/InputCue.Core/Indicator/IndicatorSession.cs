@@ -31,11 +31,17 @@ public sealed class IndicatorSession
     /// current generation are ignored without changing the current view state.
     /// </summary>
     public IndicatorViewState Observe(InputContextSnapshot snapshot) =>
-        Observe(snapshot, receivedAt: null);
+        Observe(
+            snapshot,
+            receivedAt: null,
+            refreshAnchor: false,
+            suppressContextReplay: false);
 
     public IndicatorViewState Observe(
         InputContextSnapshot snapshot,
-        DateTimeOffset? receivedAt)
+        DateTimeOffset? receivedAt,
+        bool refreshAnchor = false,
+        bool suppressContextReplay = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -63,16 +69,18 @@ public sealed class IndicatorSession
         }
 
         var inputStateChanged = previousContext is not null &&
+            IsDisplayEligible(previousContext.Eligibility) &&
             previousContext.InputState != snapshot.InputState;
         var contextEstablished = isNewGeneration ||
             previousContext is null ||
             !IsDisplayEligible(previousContext.Eligibility);
         var shouldReplay = inputStateChanged || contextEstablished;
-        var suppressContextReplay = contextEstablished &&
+        var shouldSuppressContextReplay = contextEstablished &&
             !inputStateChanged &&
-            IsContextReplaySuppressed(effectiveTime);
+            (IsContextReplaySuppressed(effectiveTime) ||
+                suppressContextReplay && !_options.AlwaysVisible);
 
-        if (shouldReplay && !suppressContextReplay)
+        if (shouldReplay && !shouldSuppressContextReplay)
         {
             Show(
                 snapshot,
@@ -88,6 +96,7 @@ public sealed class IndicatorSession
             _state = _state with
             {
                 Generation = snapshot.Generation,
+                Anchor = refreshAnchor ? snapshot.Anchor : _state.Anchor,
             };
         }
 

@@ -33,6 +33,12 @@ public sealed class InputContextTraceBuffer
         }
     }
 
+    public void Clear()
+    {
+        _observations.Clear();
+        _lastSemanticObservation = null;
+    }
+
     private static InputContextDiagnostic SemanticObservation(
         InputContextDiagnostic observation) => observation with
         {

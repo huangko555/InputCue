@@ -12,6 +12,7 @@ public sealed class InputContextEngine : IDisposable
     private static readonly TimeSpan MinimumEventObservationInterval = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan InputStateRefreshInterval = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan PositionRetryInterval = TimeSpan.FromMilliseconds(75);
+    private static readonly TimeSpan ContextReturnWindow = TimeSpan.FromMilliseconds(1200);
     private static readonly TimeSpan QueryTimeout = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan DefaultSampleInterval = TimeSpan.FromSeconds(2);
     private const int PositionRetryLimit = 3;
@@ -99,12 +100,15 @@ public sealed class InputContextEngine : IDisposable
     {
         using var eventSource = _runtime.CreateEventSource();
         var refreshTarget = RawInputContextObservation.Failure(ProbeIssue.SourceUnavailable, 0);
+        var contextReturnTracker = new ContextReturnTracker(ContextReturnWindow);
         ObservationFingerprint? previousFingerprint = null;
         RawInputContextObservation? currentObservation = null;
         InputContextSnapshot? currentSnapshot = null;
         long generation = 0;
         long lastFullObservationAt = 0;
         var positionRetryCount = 0;
+        var positionStabilizationCount = 0;
+        var isPositionStabilizationObservation = false;
         var needsFullObservation = true;
 
         try
@@ -113,6 +117,9 @@ public sealed class InputContextEngine : IDisposable
             {
                 if (needsFullObservation)
                 {
+                    var previousSnapshotForStabilization = currentSnapshot;
+                    var wasPositionStabilizationObservation = isPositionStabilizationObservation;
+                    isPositionStabilizationObservation = false;
                     currentObservation = _queryRunner.Observe(cancellationToken);
                     lastFullObservationAt = Stopwatch.GetTimestamp();
                     needsFullObservation = false;
@@ -120,20 +127,38 @@ public sealed class InputContextEngine : IDisposable
                     if (_ignoreCurrentProcess &&
                         currentObservation.Target.ProcessId == Environment.ProcessId)
                     {
+                        contextReturnTracker.Reset();
                         previousFingerprint = currentObservation.Fingerprint;
                         currentSnapshot = null;
                     }
                     else
                     {
-                        if (currentObservation.Fingerprint != previousFingerprint)
+                        var targetChanged = currentObservation.Fingerprint != previousFingerprint;
+                        if (targetChanged)
                         {
                             generation = checked(generation + 1);
                             previousFingerprint = currentObservation.Fingerprint;
                             positionRetryCount = 0;
+                            positionStabilizationCount = wasPositionStabilizationObservation
+                                ? PositionRetryLimit
+                                : 0;
                         }
 
                         currentSnapshot = Classify(currentObservation, generation);
-                        _ = writer.TryWrite(CreateDiagnostic(currentObservation, currentSnapshot));
+                        var suppressContextReplay = contextReturnTracker.Observe(
+                            currentObservation,
+                            currentSnapshot);
+                        var isSameTargetStabilization =
+                            wasPositionStabilizationObservation && !targetChanged;
+                        if (!isSameTargetStabilization ||
+                            HasStabilizationChange(previousSnapshotForStabilization, currentSnapshot))
+                        {
+                            _ = writer.TryWrite(CreateDiagnostic(
+                                currentObservation,
+                                currentSnapshot,
+                                isSameTargetStabilization,
+                                suppressContextReplay));
+                        }
                     }
                 }
 
@@ -151,11 +176,25 @@ public sealed class InputContextEngine : IDisposable
                     Eligibility.PositionUnknown;
                 var shouldRetryPosition = currentSnapshot?.Eligibility is Eligibility.PositionUnknown &&
                     positionRetryCount < PositionRetryLimit;
+                var shouldStabilizePosition = currentSnapshot?.Eligibility is
+                    Eligibility.EditableCaret or Eligibility.EditableSelection &&
+                    positionStabilizationCount < PositionRetryLimit;
                 var untilPositionRetry = PositionRetryInterval -
                     Stopwatch.GetElapsedTime(lastFullObservationAt);
-                if (shouldRetryPosition && untilPositionRetry <= TimeSpan.Zero)
+                if ((shouldRetryPosition || shouldStabilizePosition) &&
+                    untilPositionRetry <= TimeSpan.Zero)
                 {
-                    positionRetryCount++;
+                    if (shouldRetryPosition)
+                    {
+                        positionRetryCount++;
+                    }
+
+                    if (shouldStabilizePosition)
+                    {
+                        positionStabilizationCount++;
+                        isPositionStabilizationObservation = true;
+                    }
+
                     needsFullObservation = true;
                     continue;
                 }
@@ -164,7 +203,8 @@ public sealed class InputContextEngine : IDisposable
                     InputStateRefreshInterval < untilFullObservation
                         ? InputStateRefreshInterval
                         : untilFullObservation;
-                if (shouldRetryPosition && untilPositionRetry < waitInterval)
+                if ((shouldRetryPosition || shouldStabilizePosition) &&
+                    untilPositionRetry < waitInterval)
                 {
                     waitInterval = untilPositionRetry;
                 }
@@ -184,10 +224,20 @@ public sealed class InputContextEngine : IDisposable
                     continue;
                 }
 
-                if (shouldRetryPosition &&
+                if ((shouldRetryPosition || shouldStabilizePosition) &&
                     Stopwatch.GetElapsedTime(lastFullObservationAt) >= PositionRetryInterval)
                 {
-                    positionRetryCount++;
+                    if (shouldRetryPosition)
+                    {
+                        positionRetryCount++;
+                    }
+
+                    if (shouldStabilizePosition)
+                    {
+                        positionStabilizationCount++;
+                        isPositionStabilizationObservation = true;
+                    }
+
                     needsFullObservation = true;
                     continue;
                 }
@@ -241,9 +291,19 @@ public sealed class InputContextEngine : IDisposable
             observation.InputState,
             observation.Evidence);
 
+    private static bool HasStabilizationChange(
+        InputContextSnapshot? previous,
+        InputContextSnapshot current) =>
+        previous is null ||
+        previous.Anchor != current.Anchor ||
+        previous.Eligibility != current.Eligibility ||
+        previous.InputState != current.InputState;
+
     private static InputContextDiagnostic CreateDiagnostic(
         RawInputContextObservation observation,
-        InputContextSnapshot snapshot) =>
+        InputContextSnapshot snapshot,
+        bool isPositionStabilization = false,
+        bool suppressContextReplay = false) =>
         new(
             snapshot,
             observation.Target,
@@ -257,7 +317,9 @@ public sealed class InputContextEngine : IDisposable
             observation.Evidence.MsaaCaret,
             observation.Evidence.Issue,
             observation.DurationMilliseconds,
-            observation.InputStateEvidence);
+            observation.InputStateEvidence,
+            isPositionStabilization,
+            suppressContextReplay);
 
     private static void CoalesceChanges(
         IInputContextEventSource eventSource,

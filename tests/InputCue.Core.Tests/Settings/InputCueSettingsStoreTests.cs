@@ -14,6 +14,7 @@ public sealed class InputCueSettingsStoreTests
         var settings = store.Load();
 
         Assert.Equal(InputCueSettings.Default, settings);
+        Assert.Equal(IndicatorStyle.LightBadge, settings.Style);
     }
 
     [Fact]
@@ -32,7 +33,10 @@ public sealed class InputCueSettingsStoreTests
             VerticalOffsetDip: 5,
             IndicatorSizeDip: 18,
             Style: IndicatorStyle.LightBadge,
-            LightBadgeSizeDip: 44);
+            LightBadgeSizeDip: 44,
+            DotAppearance: new(IndicatorPlacement.TopLeft, -4, 6, 15),
+            LightBadgeAppearance: new(IndicatorPlacement.Right, 8, -3, 42),
+            ShadowBadgeAppearance: new(IndicatorPlacement.Bottom, -7, 9, 48));
 
         Assert.True(store.TrySave(first));
         Assert.True(store.TrySave(second));
@@ -64,12 +68,36 @@ public sealed class InputCueSettingsStoreTests
         Assert.False(settings.IndicatorEnabled);
         Assert.Equal(725, settings.DisplayDurationMilliseconds);
         Assert.Equal(225, settings.MinimumDisplayDurationMilliseconds);
-        Assert.Equal(IndicatorPlacement.Right, settings.Placement);
+        Assert.Equal(InputCueSettings.DefaultPlacement, settings.Placement);
         Assert.Equal(0, settings.HorizontalOffsetDip);
         Assert.Equal(0, settings.VerticalOffsetDip);
         Assert.Equal(InputCueSettings.DefaultIndicatorSizeDip, settings.IndicatorSizeDip);
         Assert.Equal(IndicatorStyle.Dot, settings.Style);
         Assert.Equal(InputCueSettings.DefaultLightBadgeSizeDip, settings.LightBadgeSizeDip);
+    }
+
+    [Fact]
+    public void LegacyCommonAppearanceIsInheritedByEachStyle()
+    {
+        var settings = new InputCueSettings(
+            true,
+            1000,
+            300,
+            IndicatorPlacement.TopRight,
+            HorizontalOffsetDip: 7,
+            VerticalOffsetDip: -5,
+            IndicatorSizeDip: 16,
+            LightBadgeSizeDip: 40);
+
+        Assert.Equal(
+            new IndicatorAppearanceSettings(IndicatorPlacement.TopRight, 7, -5, 16),
+            settings.GetAppearance(IndicatorStyle.Dot));
+        Assert.Equal(
+            new IndicatorAppearanceSettings(IndicatorPlacement.TopRight, 7, -5, 40),
+            settings.GetAppearance(IndicatorStyle.LightBadge));
+        Assert.Equal(
+            new IndicatorAppearanceSettings(IndicatorPlacement.TopRight, 7, -5, 40),
+            settings.GetAppearance(IndicatorStyle.ShadowBadge));
     }
 
     [Theory]
@@ -148,6 +176,28 @@ public sealed class InputCueSettingsStoreTests
             300,
             Style: style,
             LightBadgeSizeDip: lightBadgeSizeDip));
+
+        Assert.False(saved);
+        Assert.False(File.Exists(path));
+    }
+
+    [Fact]
+    public void InvalidPerStyleAppearanceIsNotWritten()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var store = new InputCueSettingsStore(path);
+        var settings = new InputCueSettings(
+            true,
+            1000,
+            300,
+            ShadowBadgeAppearance: new(
+                IndicatorPlacement.BottomRight,
+                0,
+                0,
+                InputCueSettings.MinimumLightBadgeSizeDip - 1));
+
+        var saved = store.TrySave(settings);
 
         Assert.False(saved);
         Assert.False(File.Exists(path));

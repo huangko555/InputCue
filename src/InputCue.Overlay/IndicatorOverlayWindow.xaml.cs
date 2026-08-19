@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using InputCue.Core.Indicator;
 using InputCue.Core.InputContext;
 using InputCue.Core.Settings;
@@ -24,20 +25,21 @@ public partial class IndicatorOverlayWindow : Window
     private const double LightBadgeBaseBorderDip = 2.5;
     private const double LightBadgeBaseInsetDip = 5;
     private const double LightBadgeBaseShadowOffsetDip = 4;
+    private const double SoftShadowPaddingDip = 5;
     private const uint MonitorDefaultToNearest = 0x00000002;
-
-    private static readonly SolidColorBrush ChineseBrush = FrozenBrush("#E5534B");
-    private static readonly SolidColorBrush EnglishBrush = FrozenBrush("#2F7FD6");
-    private static readonly SolidColorBrush EnglishUsBrush = FrozenBrush("#D99000");
-    private static readonly SolidColorBrush CapsLockBrush = FrozenBrush("#2F9E68");
 
     private nint _windowHandle;
     private long? _positionedGeneration;
+    private ScreenRect? _positionedAnchor;
     private IndicatorStyle _style = IndicatorStyle.Dot;
-    private IndicatorPlacement _placement = IndicatorPlacement.Right;
+    private IndicatorPlacement _placement = InputCueSettings.DefaultPlacement;
     private int _horizontalOffsetDip;
     private int _verticalOffsetDip;
     private int _lightBadgeSizeDip = InputCueSettings.DefaultLightBadgeSizeDip;
+    private SolidColorBrush _chineseBrush = FrozenBrush(InputCueSettings.DefaultChineseDotColor);
+    private SolidColorBrush _englishBrush = FrozenBrush(InputCueSettings.DefaultEnglishDotColor);
+    private SolidColorBrush _englishUsBrush = FrozenBrush(InputCueSettings.DefaultEnglishUsDotColor);
+    private SolidColorBrush _capsLockBrush = FrozenBrush(InputCueSettings.DefaultCapsLockDotColor);
 
     internal IndicatorOverlayWindow()
     {
@@ -50,7 +52,11 @@ public partial class IndicatorOverlayWindow : Window
         int horizontalOffsetDip,
         int verticalOffsetDip,
         int indicatorSizeDip,
-        int lightBadgeSizeDip)
+        int lightBadgeSizeDip,
+        string chineseDotColor,
+        string englishDotColor,
+        string englishUsDotColor,
+        string capsLockDotColor)
     {
         if (!Enum.IsDefined(style))
         {
@@ -82,13 +88,26 @@ public partial class IndicatorOverlayWindow : Window
             throw new ArgumentOutOfRangeException(nameof(lightBadgeSizeDip));
         }
 
+        if (!InputCueSettings.IsHexColor(chineseDotColor) ||
+            !InputCueSettings.IsHexColor(englishDotColor) ||
+            !InputCueSettings.IsHexColor(englishUsDotColor) ||
+            !InputCueSettings.IsHexColor(capsLockDotColor))
+        {
+            throw new ArgumentException("Dot colors must contain exactly six hexadecimal digits.");
+        }
+
         _style = style;
         _placement = placement;
         _horizontalOffsetDip = horizontalOffsetDip;
         _verticalOffsetDip = verticalOffsetDip;
         _lightBadgeSizeDip = lightBadgeSizeDip;
+        _chineseBrush = FrozenBrush(chineseDotColor);
+        _englishBrush = FrozenBrush(englishDotColor);
+        _englishUsBrush = FrozenBrush(englishUsDotColor);
+        _capsLockBrush = FrozenBrush(capsLockDotColor);
         ConfigureVisuals(indicatorSizeDip, lightBadgeSizeDip);
         _positionedGeneration = null;
+        _positionedAnchor = null;
     }
 
     internal void Render(IndicatorViewState state)
@@ -97,29 +116,45 @@ public partial class IndicatorOverlayWindow : Window
         {
             Hide();
             _positionedGeneration = null;
+            _positionedAnchor = null;
             return;
         }
 
         IndicatorDot.Fill = state.InputState switch
         {
-            InputState.Chinese => ChineseBrush,
-            InputState.English => EnglishBrush,
-            InputState.EnglishUs => EnglishUsBrush,
-            InputState.CapsLock => CapsLockBrush,
+            InputState.Chinese => _chineseBrush,
+            InputState.English => _englishBrush,
+            InputState.EnglishUs => _englishUsBrush,
+            InputState.CapsLock => _capsLockBrush,
             _ => Brushes.Transparent,
         };
-        LightBadgeGlyph.Data = LightBadgeGlyphs.For(state.InputState);
-        var glyphInset = state.InputState == InputState.EnglishUs
-            ? LightBadgeBaseInsetDip * 0.7
-            : LightBadgeBaseInsetDip;
-        LightBadgeGlyphViewbox.Margin = new Thickness(glyphInset *
-            (_lightBadgeSizeDip / LightBadgeBaseSizeDip));
+        LightBadgeGlyph.Data = _style == IndicatorStyle.ShadowBadge
+            ? ShadowBadgeGlyphs.For(state.InputState)
+            : LightBadgeGlyphs.For(state.InputState);
+        if (_style == IndicatorStyle.ShadowBadge)
+        {
+            LightBadgeGlyph.Width = 64;
+            LightBadgeGlyph.Height = 64;
+            LightBadgeGlyphViewbox.Margin = new Thickness(0);
+        }
+        else
+        {
+            LightBadgeGlyph.Width = double.NaN;
+            LightBadgeGlyph.Height = double.NaN;
+            var glyphInset = state.InputState == InputState.EnglishUs
+                ? LightBadgeBaseInsetDip * 0.85
+                : LightBadgeBaseInsetDip;
+            LightBadgeGlyphViewbox.Margin = new Thickness(glyphInset *
+                (_lightBadgeSizeDip / LightBadgeBaseSizeDip));
+        }
         Opacity = state.Opacity;
 
         var shouldReposition = OverlayRenderPolicy.ShouldReposition(
             IsVisible,
             _positionedGeneration,
-            state.Generation);
+            state.Generation,
+            _positionedAnchor,
+            anchor);
         if (shouldReposition)
         {
             if (!IsVisible)
@@ -129,6 +164,7 @@ public partial class IndicatorOverlayWindow : Window
 
             Position(anchor);
             _positionedGeneration = state.Generation;
+            _positionedAnchor = anchor;
         }
     }
 
@@ -137,7 +173,7 @@ public partial class IndicatorOverlayWindow : Window
         IndicatorDot.Visibility = _style == IndicatorStyle.Dot
             ? Visibility.Visible
             : Visibility.Collapsed;
-        LightBadgeVisual.Visibility = _style == IndicatorStyle.LightBadge
+        LightBadgeVisual.Visibility = _style is IndicatorStyle.LightBadge or IndicatorStyle.ShadowBadge
             ? Visibility.Visible
             : Visibility.Collapsed;
 
@@ -151,22 +187,59 @@ public partial class IndicatorOverlayWindow : Window
         }
 
         var scale = lightBadgeSizeDip / LightBadgeBaseSizeDip;
-        var shadowOffset = LightBadgeBaseShadowOffsetDip * scale;
-        var overallSize = lightBadgeSizeDip + shadowOffset;
         var inset = LightBadgeBaseInsetDip * scale;
 
-        LightBadgeVisual.Width = overallSize;
-        LightBadgeVisual.Height = overallSize;
+        if (_style == IndicatorStyle.ShadowBadge)
+        {
+            var shadowPadding = SoftShadowPaddingDip * scale;
+            var overallSize = lightBadgeSizeDip + (shadowPadding * 2);
+            LightBadgeVisual.Width = overallSize;
+            LightBadgeVisual.Height = overallSize;
+            LightBadgeShadow.Visibility = Visibility.Collapsed;
+            Canvas.SetLeft(LightBadgeBody, shadowPadding);
+            Canvas.SetTop(LightBadgeBody, shadowPadding);
+            LightBadgeBody.Width = lightBadgeSizeDip;
+            LightBadgeBody.Height = lightBadgeSizeDip;
+            LightBadgeBody.Background = FrozenBrush("FCFCFC");
+            LightBadgeBody.BorderBrush = FrozenBrush("D4D4D8");
+            LightBadgeBody.BorderThickness = new Thickness(Math.Max(1, scale));
+            LightBadgeBody.Effect = new DropShadowEffect
+            {
+                BlurRadius = 8 * scale,
+                Color = Color.FromRgb(82, 82, 91),
+                Direction = 0,
+                Opacity = 0.22,
+                ShadowDepth = 0,
+            };
+            LightBadgeGlyph.Fill = FrozenBrush("52525B");
+            LightBadgeGlyphViewbox.Margin = new Thickness(0);
+            Width = overallSize;
+            Height = overallSize;
+            return;
+        }
+
+        var shadowOffset = LightBadgeBaseShadowOffsetDip * scale;
+        var outlinedOverallSize = lightBadgeSizeDip + shadowOffset;
+
+        LightBadgeVisual.Width = outlinedOverallSize;
+        LightBadgeVisual.Height = outlinedOverallSize;
+        LightBadgeShadow.Visibility = Visibility.Visible;
         LightBadgeShadow.Width = lightBadgeSizeDip;
         LightBadgeShadow.Height = lightBadgeSizeDip;
         Canvas.SetLeft(LightBadgeShadow, shadowOffset);
         Canvas.SetTop(LightBadgeShadow, shadowOffset);
+        Canvas.SetLeft(LightBadgeBody, 0);
+        Canvas.SetTop(LightBadgeBody, 0);
         LightBadgeBody.Width = lightBadgeSizeDip;
         LightBadgeBody.Height = lightBadgeSizeDip;
+        LightBadgeBody.Background = FrozenBrush("FFFFFF");
+        LightBadgeBody.BorderBrush = FrozenBrush("000000");
         LightBadgeBody.BorderThickness = new Thickness(LightBadgeBaseBorderDip * scale);
+        LightBadgeBody.Effect = null;
+        LightBadgeGlyph.Fill = FrozenBrush("000000");
         LightBadgeGlyphViewbox.Margin = new Thickness(inset);
-        Width = overallSize;
-        Height = overallSize;
+        Width = outlinedOverallSize;
+        Height = outlinedOverallSize;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -220,7 +293,7 @@ public partial class IndicatorOverlayWindow : Window
 
     private static SolidColorBrush FrozenBrush(string color)
     {
-        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
+        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString($"#{color}"));
         brush.Freeze();
         return brush;
     }
