@@ -182,7 +182,11 @@ public partial class App : System.Windows.Application
         }
 
         _pauseMenuItem.Text = window.IsWatching ? "暂停提示" : "继续提示";
-        _trayIcon.Text = window.IsWatching ? "InputCue - 正在运行" : "InputCue - 已暂停";
+        _trayIcon.Text = !window.IsWatching
+            ? "InputCue - 已暂停"
+            : window.IsRecovering
+                ? "InputCue - 正在恢复"
+                : "InputCue - 正在运行";
     }
 
     private void OpenMainWindow()

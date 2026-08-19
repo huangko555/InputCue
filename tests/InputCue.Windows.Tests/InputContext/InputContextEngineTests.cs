@@ -314,6 +314,32 @@ public sealed class InputContextEngineTests
     }
 
     [Fact]
+    public async Task WatchAsyncCanRestartAfterAnUnexpectedEventSourceFailure()
+    {
+        using var runtime = new TransientEventSourceFailureRuntime();
+        using var engine = new InputContextEngine(
+            TimeSpan.FromSeconds(5),
+            ignoreCurrentProcess: false,
+            runtime);
+
+        await using (var failed = engine.WatchAsync().GetAsyncEnumerator())
+        {
+            Assert.True(await failed.MoveNextAsync());
+            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await failed.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+
+        using var cancellation = new CancellationTokenSource();
+        await using var recovered = engine
+            .WatchAsync(cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+
+        Assert.True(await recovered.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(2, runtime.EventSourceCreationCount);
+        cancellation.Cancel();
+    }
+
+    [Fact]
     public async Task WatchAsyncCoalescesChangesInsideTheDebounceWindow()
     {
         using var runtime = new TestInputContextRuntime(stableIdentity: true);
@@ -596,6 +622,52 @@ public sealed class InputContextEngineTests
 
             return result == 0;
         }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class TransientEventSourceFailureRuntime : IInputContextRuntime, IDisposable
+    {
+        private readonly ManualResetEventSlim _changeWasObserved = new();
+        private readonly AutoResetEvent _signal = new(initialState: false);
+        private int _eventSourceCreationCount;
+
+        internal int EventSourceCreationCount => Volatile.Read(ref _eventSourceCreationCount);
+
+        public IInputContextEventSource CreateEventSource() =>
+            Interlocked.Increment(ref _eventSourceCreationCount) == 1
+                ? new ThrowingEventSource()
+                : new TestEventSource(_signal, _changeWasObserved);
+
+        public RawInputContextObservation Observe() =>
+            new(
+                1,
+                1,
+                1,
+                new TargetDescriptor(1, "target", "ControlType.Edit", "Edit", "Test"),
+                InputState.English,
+                InputStateEvidence.Unavailable,
+                new InputEvidence(true, false, false, new ScreenRect(100, 120, 2, 20), null, null),
+                UiAutomationCaretMethod.TextPattern,
+                TextPattern2Status.PatternUnavailable,
+                1);
+
+        public RawInputContextObservation RefreshInputState(RawInputContextObservation current) =>
+            current;
+
+        public void Dispose()
+        {
+            _changeWasObserved.Dispose();
+            _signal.Dispose();
+        }
+    }
+
+    private sealed class ThrowingEventSource : IInputContextEventSource
+    {
+        public bool WaitForChange(TimeSpan fallbackInterval, CancellationToken cancellation) =>
+            throw new InvalidOperationException("Injected event source failure.");
 
         public void Dispose()
         {

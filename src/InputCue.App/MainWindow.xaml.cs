@@ -22,6 +22,7 @@ public partial class MainWindow : Window, IDisposable
     private const int HistoryCapacity = 200;
     private static readonly TimeSpan AnimationTickInterval = TimeSpan.FromMilliseconds(33);
     private static readonly TimeSpan CapsLockPollInterval = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan WatchRecoveryDelay = TimeSpan.FromSeconds(2);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         Converters = { new JsonStringEnumConverter() },
@@ -41,6 +42,7 @@ public partial class MainWindow : Window, IDisposable
     private bool _capsLockEnabled;
     private bool _disposed;
     private bool _indicatorEnabled;
+    private bool _isRecovering;
     private bool _settingsInitialized;
     private bool _startupSettingInitialized;
     private bool _started;
@@ -61,6 +63,8 @@ public partial class MainWindow : Window, IDisposable
     public event EventHandler? WatchingStateChanged;
 
     public bool IsWatching => _watchCancellation is not null;
+
+    public bool IsRecovering => IsWatching && _isRecovering;
 
     public MainWindow(
         InputCueSettings settings,
@@ -489,6 +493,7 @@ public partial class MainWindow : Window, IDisposable
         }
 
         _watchCancellation = new CancellationTokenSource();
+        _isRecovering = false;
         PauseButton.Content = "暂停";
         RefreshWatchingStatus();
         StatusText.Text = "正在监听。请切换到其他应用测试，InputCue 自身不会成为观察目标。";
@@ -500,6 +505,7 @@ public partial class MainWindow : Window, IDisposable
     {
         var cancellation = _watchCancellation;
         _watchCancellation = null;
+        _isRecovering = false;
         cancellation?.Cancel();
         cancellation?.Dispose();
         _overlayPresenter.Hide();
@@ -514,39 +520,73 @@ public partial class MainWindow : Window, IDisposable
     private void RefreshWatchingStatus()
     {
         var isWatching = IsWatching;
-        WatchingStatusText.Text = isWatching ? "正在监听" : "已暂停";
-        WatchingStatusText.Foreground = isWatching
+        WatchingStatusText.Text = !isWatching
+            ? "已暂停"
+            : _isRecovering
+                ? "正在恢复"
+                : "正在监听";
+        WatchingStatusText.Foreground = isWatching && !_isRecovering
             ? (Brush)FindResource("MutedBrush")
             : (Brush)FindResource("PausedBrush");
-        WatchingStatusDot.Fill = isWatching
+        WatchingStatusDot.Fill = isWatching && !_isRecovering
             ? (Brush)FindResource("ListeningBrush")
             : (Brush)FindResource("PausedBrush");
     }
 
     private async Task WatchAsync(CancellationToken cancellationToken)
     {
-        try
+        while (!cancellationToken.IsCancellationRequested)
         {
-            await foreach (var diagnostic in _engine.WatchAsync(cancellationToken))
+            try
             {
-                await Dispatcher.InvokeAsync(() => ShowDiagnostic(diagnostic));
+                await foreach (var diagnostic in _engine.WatchAsync(cancellationToken))
+                {
+                    await Dispatcher.InvokeAsync(() => ShowDiagnostic(diagnostic));
+                }
             }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-        catch (Exception)
-        {
-            await Dispatcher.InvokeAsync(() =>
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                StatusText.Text = "诊断探针意外停止。未记录异常正文，以免包含敏感数据。";
-                PauseButton.Content = "继续";
-                _watchCancellation?.Dispose();
-                _watchCancellation = null;
-                RefreshWatchingStatus();
-                WatchingStateChanged?.Invoke(this, EventArgs.Empty);
-            });
+                return;
+            }
+            catch (Exception)
+            {
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await Dispatcher.InvokeAsync(() => SetRecoveryState(isRecovering: true));
+            try
+            {
+                await Task.Delay(WatchRecoveryDelay, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await Dispatcher.InvokeAsync(() => SetRecoveryState(isRecovering: false));
         }
+    }
+
+    private void SetRecoveryState(bool isRecovering)
+    {
+        _isRecovering = isRecovering;
+        if (isRecovering)
+        {
+            _overlayPresenter.Hide();
+            _indicatorTimer.Stop();
+            StatusText.Text = "监听意外中断，正在自动恢复。";
+        }
+        else
+        {
+            StatusText.Text = "监听已自动恢复。";
+        }
+
+        RefreshWatchingStatus();
+        WatchingStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void ShowDiagnostic(InputContextDiagnostic diagnostic)

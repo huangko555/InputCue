@@ -98,7 +98,6 @@ public sealed class InputContextEngine : IDisposable
         ChannelWriter<InputContextDiagnostic> writer,
         CancellationToken cancellationToken)
     {
-        using var eventSource = _runtime.CreateEventSource();
         var refreshTarget = RawInputContextObservation.Failure(ProbeIssue.SourceUnavailable, 0);
         var contextReturnTracker = new ContextReturnTracker(ContextReturnWindow);
         ObservationFingerprint? previousFingerprint = null;
@@ -113,6 +112,7 @@ public sealed class InputContextEngine : IDisposable
 
         try
         {
+            using var eventSource = _runtime.CreateEventSource();
             while (!cancellationToken.IsCancellationRequested)
             {
                 if (needsFullObservation)
@@ -275,6 +275,10 @@ public sealed class InputContextEngine : IDisposable
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+        }
+        catch (Exception exception) when (exception is not StackOverflowException)
+        {
+            writer.TryComplete(exception);
         }
         finally
         {
