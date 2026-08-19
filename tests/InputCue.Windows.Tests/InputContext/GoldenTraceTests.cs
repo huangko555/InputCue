@@ -92,6 +92,24 @@ public sealed class GoldenTraceTests
         Assert.Equal("msedgewebview2", Assert.Single(trace.Observations).Target.ProcessName);
     }
 
+    [Fact]
+    public void FeishuWebTraceAcceptsDocumentEditingAndRejectsNearbySurfaces()
+    {
+        var trace = ReadTrace("feishu-web-basic.json");
+
+        var replayed = InputContextTraceReplay.Reclassify(trace);
+
+        Assert.Collection(
+            replayed,
+            snapshot => Assert.Equal(Eligibility.EditableCaret, snapshot.Eligibility),
+            snapshot => Assert.Equal(Eligibility.EditableSelection, snapshot.Eligibility),
+            snapshot => Assert.Equal(Eligibility.NoEditableFocus, snapshot.Eligibility),
+            snapshot => Assert.Equal(Eligibility.ReadOnlySelection, snapshot.Eligibility));
+        Assert.Equal("page-block root-block", trace.Observations[0].Target.ClassName);
+        Assert.Equal("docx-selection-hidden-textarea", trace.Observations[3].Target.ClassName);
+        Assert.False(trace.Observations[3].HasEditableFocus);
+    }
+
     private static InputContextTrace ReadTrace(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "traces", fileName);

@@ -170,6 +170,7 @@
 - WPS 正文稳定暴露为 `wps.exe + Qt + KxWpsView + ControlType.Group + ValuePattern(IsReadOnly=false)`，已纳入窄范围应用画像；
 - 该画像当前可确认 `HasEditableFocus=true`，但 UIA TextPattern、Win32 Caret、MSAA Caret、IMM 组合点均为空，最终状态为 `PositionUnknown`，提示层必须继续隐藏；
 - 不引入远程线程 Hook、注入 DLL 或鼠标坐标伪装 Caret；若后续无法找到可审计锚点，将 WPS 记录为 V1 不支持。
+- WPS 与飞书表格的容器/整格锚点校正合并为后续专题：统一验证 UIA 外框、MSAA/Win32 小 Caret、DPI 和 Overlay 外侧间距，禁止为单个应用添加未经验证的固定偏移。
 
 ### 3A.4 Windows Terminal
 
@@ -196,11 +197,10 @@
 
 ### 3A.7 飞书云文档（网页 Slate）
 
-- 用户反馈：Edge/Chrome 中点击飞书云文档正文编辑区时当前判定为 `NoEditableFocus`，不显示提示；
-- DOM 侧已确认编辑器使用 Slate：根节点和聚焦段落均暴露 `contenteditable=true + data-slate-editor=true`，页面同时存在不可见、只读的选区辅助 `textarea`，不能把它当作可编辑目标；
-- 修复前必须采集真实 Edge UIA Trace，确认聚焦元素的 `ControlType`、`ClassName`、`FrameworkId`、只读状态、Text Pattern 和 Caret 来源；
-- 只有 UIA 侧存在稳定、可区分的证据时才加入飞书专用窄画像，禁止把任意网页 `contenteditable` 或 `ControlType.Group` 泛化为可编辑；
-- 回归场景至少覆盖正文编辑区正例，以及标题、侧栏、静态正文、只读文档和正文拖选负例；可编辑已确认但无 Caret 时仍归为 `PositionUnknown` 并隐藏。
+- 已完成 Edge 真实前台采集和实现：正文稳定暴露为 `Chrome + Group + page-block root-block + TextPattern`，折叠 Caret 为随方向键移动的 `1x20` 矩形，拖选可区分为非折叠选区；
+- 飞书不可见选区辅助控件暴露为 `Edit + docx-selection-hidden-textarea`，在通用 `Edit` 资格判断前明确排除；标题/侧栏近似项为 `Hyperlink` 并保持隐藏；
+- 专用画像只接受上述正文 Class token、Chrome 框架、Group 类型和 TextPattern，外层仍要求键盘焦点、启用状态和明确可写，未放宽任意网页 `contenteditable` 或 `ControlType.Group`；
+- 已保存脱敏黄金 Trace，覆盖正文 Caret、正文选区、侧栏和隐藏 textarea；只读文档仍作为后续扩充场景，可编辑已确认但无 Caret 时继续归为 `PositionUnknown` 并隐藏。
 
 ### 3A.8 微信定位兼容性
 
@@ -208,6 +208,31 @@
 - 分别采集聊天输入框首次点击、切换会话、联想/选区、窗口前后台切换和多 DPI 场景的脱敏 Trace；
 - 先区分焦点目标错误、Caret 来源错误、坐标空间/DPI 转换错误和微信多窗口/子进程身份问题，再决定通用修复或应用画像；
 - 不使用鼠标位置或跨 Generation 的旧 Caret 坐标伪装输入光标，定位证据不足时继续安全隐藏。
+
+### 3A.9 文档/表格容器锚点校正
+
+- 当前进度：飞书表格已支持单击选中单元格即建立可编辑上下文，使用 `cell-wrapper-element` / `suite-sheet` 祖先链确认范围；提示暂以整格矩形作为 Anchor，实机仍发现外侧对齐存在偏差；
+- 用户已确认该偏差不是因为位置空间不足；当前保持可用的单击显示逻辑，不加入临时固定偏移，待与 WPS 一起做机制性校正；
+- 后续与 WPS 一起处理，不在单个应用画像中加入固定 X/Y 补偿；先采集整格/文档外框、真实显示器 DPI、Overlay 物理像素坐标和首选方向，再统一校正容器锚点到提示外沿的几何关系；
+- 验收至少覆盖飞书表格不同列宽/行高、滚动后单元格、合并单元格、100%/125%/150% DPI，以及 WPS 正文普通段落和页面边缘；若无法稳定得到容器矩形，继续安全隐藏或延期支持。
+
+### 3A.10 飞书多维表格
+
+- 已完成 Edge 真实前台采集和窄画像实现：编辑状态焦点元素为 `Chrome + Group + TextPattern`，类名同时包含动态前缀 `BITABLE_EDITOR_CONTAINER_` 和固定标记 `bitable-text-editor-container--active`；
+- 仅在活动编辑器出现时建立可编辑上下文，不把普通多维表格区域或外层 `Document` 当作输入控件；Anchor 使用活动编辑器矩形，暂不依赖不可用的文字 Caret；
+- 已补画像近似项测试；后续仍需补充只读字段、数字/日期/单选字段和弹窗编辑器负例，避免不同字段编辑器共享类名时误显示。
+
+### 3A.11 飞书幻灯片（网页）
+
+- 已完成两次 Edge 真实前台脱敏采集；幻灯片编辑区仅暴露 `Chrome + Group` 画布节点，近似类名为 `slide-canvas-boundary`、`zone-container slide-zone`，未观察到可编辑文本框、TextPattern 或 Caret；
+- 双击文本框并输入字符的定向采集仍为 `NoEditableFocus`，因此当前没有可审计的安全 Anchor，不放宽通用网页规则，也不使用鼠标位置或画布固定坐标伪装；
+- 当前版本暂不支持飞书幻灯片提示，后续若 UIA 暴露稳定文本编辑器或可验证对象外框，再单独建立窄画像和回归 Trace。
+
+### 3A.12 飞书 Windows 客户端聊天
+
+- 已完成真实前台 Trace 和 UIA 结构采样：聊天输入区焦点节点为 `Feishu + Chrome + Group`，类名包含 `zone-container`、`editor-kit-container` 和 `innerdocbody`，并提供 TextPattern；
+- 专用画像同时要求直接父级包含 `outerdocbody` 和 `editor-kit-outer-container`，不把客户端内的普通文档、聊天列表或其他 Chrome Group 泛化为可编辑；
+- 已在客户端聊天输入框实机验证提示可正常显示，定位继续使用标准 TextPattern/TextPattern2 Caret，不使用输入框整体外框或鼠标位置作为替代坐标。
 
 ### 3A 验收门槛
 

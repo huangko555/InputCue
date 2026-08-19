@@ -53,3 +53,7 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj -c Release -- --captur
 ```
 
 命令启动后有 20 秒操作时间。人工依次点击网页输入框、在输入框内建立选区、拖选静态正文、点击单选按钮。完成后先检查 Trace 的 `ProcessName` 确实属于目标浏览器，再选择最小观察集规范化进入本目录。未经确认的采集文件留在 `.local/`，不得作为黄金 Trace 提交。
+
+## 飞书云文档网页基线
+
+`feishu-web-basic.json` 来自 Edge 中可编辑飞书云文档的真实前台人工采集，保留正文折叠光标、正文选区、侧栏链接和隐藏选区辅助 textarea。正文焦点元素为 `Chrome + Group + page-block root-block + TextPattern`，折叠光标矩形随方向键移动；`docx-selection-hidden-textarea` 虽暴露为 `Edit`，但属于不可见辅助控件，必须保持非编辑状态。原始采集保存在 `.local/`，黄金文件已清除时间、PID、坐标和耗时。

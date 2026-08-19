@@ -107,4 +107,189 @@ public sealed class AppProfileCatalogTests
             ControlType.Document,
             hasTextPattern: true));
     }
+
+    [Fact]
+    public void FeishuDocumentSurfaceRequiresTheRecordedWritableShape()
+    {
+        Assert.True(AppProfileCatalog.SupportsWritableFeishuDocumentSurface(
+            "page-block root-block",
+            "Chrome",
+            ControlType.Group,
+            hasTextPattern: true));
+    }
+
+    [Theory]
+    [InlineData("page-block", "Chrome", true)]
+    [InlineData("root-block", "Chrome", true)]
+    [InlineData("page-block root-block", "Other", true)]
+    [InlineData("page-block root-block", "Chrome", false)]
+    public void FeishuDocumentSurfaceRejectsNearMisses(
+        string className,
+        string frameworkId,
+        bool hasTextPattern)
+    {
+        Assert.False(AppProfileCatalog.SupportsWritableFeishuDocumentSurface(
+            className,
+            frameworkId,
+            ControlType.Group,
+            hasTextPattern));
+    }
+
+    [Fact]
+    public void FeishuDocumentSurfaceRejectsNonGroupControl()
+    {
+        Assert.False(AppProfileCatalog.SupportsWritableFeishuDocumentSurface(
+            "page-block root-block",
+            "Chrome",
+            ControlType.Document,
+            hasTextPattern: true));
+    }
+
+    [Fact]
+    public void HiddenFeishuSelectionHelperRequiresTheRecordedShape()
+    {
+        Assert.True(AppProfileCatalog.IsHiddenFeishuSelectionHelper(
+            "docx-selection-hidden-textarea",
+            "Chrome",
+            ControlType.Edit));
+    }
+
+    [Theory]
+    [InlineData("other", "Chrome")]
+    [InlineData("docx-selection-hidden-textarea", "Other")]
+    public void HiddenFeishuSelectionHelperRejectsNearMisses(
+        string className,
+        string frameworkId)
+    {
+        Assert.False(AppProfileCatalog.IsHiddenFeishuSelectionHelper(
+            className,
+            frameworkId,
+            ControlType.Edit));
+    }
+
+    [Fact]
+    public void HiddenFeishuSelectionHelperRejectsNonEditControl()
+    {
+        Assert.False(AppProfileCatalog.IsHiddenFeishuSelectionHelper(
+            "docx-selection-hidden-textarea",
+            "Chrome",
+            ControlType.Group));
+    }
+
+    [Fact]
+    public void FeishuSheetSurfaceRequiresTheRecordedAncestorShape()
+    {
+        Assert.True(AppProfileCatalog.SupportsWritableFeishuSheetSurface(
+            string.Empty,
+            "Chrome",
+            ControlType.Group,
+            hasTextPattern: true,
+            hasRecordedAncestorShape: true));
+    }
+
+    [Theory]
+    [InlineData("other", "Chrome", true, true)]
+    [InlineData("", "Other", true, true)]
+    [InlineData("", "Chrome", false, true)]
+    [InlineData("", "Chrome", true, false)]
+    public void FeishuSheetSurfaceRejectsNearMisses(
+        string className,
+        string frameworkId,
+        bool hasTextPattern,
+        bool hasRecordedAncestorShape)
+    {
+        Assert.False(AppProfileCatalog.SupportsWritableFeishuSheetSurface(
+            className,
+            frameworkId,
+            ControlType.Group,
+            hasTextPattern,
+            hasRecordedAncestorShape));
+    }
+
+    [Fact]
+    public void FeishuSheetSurfaceRejectsNonGroupControl()
+    {
+        Assert.False(AppProfileCatalog.SupportsWritableFeishuSheetSurface(
+            string.Empty,
+            "Chrome",
+            ControlType.Edit,
+            hasTextPattern: true,
+            hasRecordedAncestorShape: true));
+    }
+
+    [Fact]
+    public void FeishuBitableSurfaceRequiresTheRecordedActiveEditorShape()
+    {
+        Assert.True(AppProfileCatalog.SupportsWritableFeishuBitableSurface(
+            "bitable-text-editor-container bitable-text-editor-container--active BITABLE_EDITOR_CONTAINER_tbl",
+            "Chrome",
+            ControlType.Group,
+            hasTextPattern: true,
+            hasActiveEditorAncestor: true));
+    }
+
+    [Theory]
+    [InlineData("BITABLE_EDITOR_CONTAINER_tbl", "Chrome", true, false)]
+    [InlineData("BITABLE_EDITOR_CONTAINER_tbl", "Other", true, true)]
+    [InlineData("BITABLE_EDITOR_CONTAINER_tbl", "Chrome", false, true)]
+    public void FeishuBitableSurfaceRejectsNearMisses(
+        string className,
+        string frameworkId,
+        bool hasTextPattern,
+        bool hasActiveEditorAncestor)
+    {
+        Assert.False(AppProfileCatalog.SupportsWritableFeishuBitableSurface(
+            className,
+            frameworkId,
+            ControlType.Group,
+            hasTextPattern,
+            hasActiveEditorAncestor));
+    }
+
+    [Fact]
+    public void FeishuChatSurfaceRequiresTheRecordedEditorShape()
+    {
+        Assert.True(AppProfileCatalog.SupportsWritableFeishuChatSurface(
+            "Feishu",
+            "zone-container editor-kit-container innerdocbody notranslate chrome window chrome88",
+            "Chrome",
+            ControlType.Group,
+            hasTextPattern: true,
+            hasRecordedParentShape: true));
+    }
+
+    [Theory]
+    [InlineData("other", "zone-container editor-kit-container innerdocbody", "Chrome", true, true)]
+    [InlineData("Feishu", "editor-kit-container innerdocbody", "Chrome", true, true)]
+    [InlineData("Feishu", "zone-container editor-kit-container innerdocbody", "Other", true, true)]
+    [InlineData("Feishu", "zone-container editor-kit-container innerdocbody", "Chrome", false, true)]
+    [InlineData("Feishu", "zone-container editor-kit-container innerdocbody", "Chrome", true, false)]
+    public void FeishuChatSurfaceRejectsNearMisses(
+        string processName,
+        string className,
+        string frameworkId,
+        bool hasTextPattern,
+        bool hasRecordedParentShape)
+    {
+        Assert.False(AppProfileCatalog.SupportsWritableFeishuChatSurface(
+            processName,
+            className,
+            frameworkId,
+            ControlType.Group,
+            hasTextPattern,
+            hasRecordedParentShape));
+    }
+
+    [Fact]
+    public void FeishuChatSurfaceRejectsNonGroupControl()
+    {
+        Assert.False(AppProfileCatalog.SupportsWritableFeishuChatSurface(
+            "Feishu",
+            "zone-container editor-kit-container innerdocbody",
+            "Chrome",
+            ControlType.Document,
+            hasTextPattern: true,
+            hasRecordedParentShape: true));
+    }
+
 }

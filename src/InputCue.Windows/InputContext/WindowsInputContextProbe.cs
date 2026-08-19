@@ -71,9 +71,21 @@ internal sealed class WindowsInputContextProbe : IDisposable
             var valuePattern = GetPattern<ValuePattern>(focusedElement, ValuePattern.Pattern);
             var isReadOnly = ReadOnlyState(textPattern, valuePattern);
             var processName = ProcessName(focusedProcessId);
+            var hasBitableActiveEditorAncestor = HasBitableActiveEditorAncestor(focusedElement);
+            var hasFeishuChatParentShape = HasFeishuChatParentShape(focusedElement);
+            var bitableEditorAnchor = TryGetFeishuBitableEditorAnchor(
+                focusedElement,
+                hasBitableActiveEditorAncestor,
+                textPattern is not null);
+            var sheetCellAnchor = TryGetFeishuSheetCellAnchor(focusedElement);
+            var hasFeishuSheetAncestorShape = sheetCellAnchor is not null;
             var hasEditableFocus = current.HasKeyboardFocus &&
                 current.IsEnabled &&
                 isReadOnly is false &&
+                !AppProfileCatalog.IsHiddenFeishuSelectionHelper(
+                    current.ClassName,
+                    current.FrameworkId,
+                    current.ControlType) &&
                 (EditableControlPolicy.SupportsTextEditing(
                      current.ControlType,
                      valuePattern is not null) ||
@@ -92,7 +104,31 @@ internal sealed class WindowsInputContextProbe : IDisposable
                      current.ClassName,
                      current.FrameworkId,
                      current.ControlType,
-                     textPattern is not null));
+                     textPattern is not null) ||
+                 AppProfileCatalog.SupportsWritableFeishuDocumentSurface(
+                     current.ClassName,
+                     current.FrameworkId,
+                     current.ControlType,
+                     textPattern is not null) ||
+                 AppProfileCatalog.SupportsWritableFeishuSheetSurface(
+                     current.ClassName,
+                     current.FrameworkId,
+                     current.ControlType,
+                     textPattern is not null,
+                     hasFeishuSheetAncestorShape) ||
+                 AppProfileCatalog.SupportsWritableFeishuBitableSurface(
+                     current.ClassName,
+                     current.FrameworkId,
+                     current.ControlType,
+                     textPattern is not null,
+                     hasBitableActiveEditorAncestor) ||
+                 AppProfileCatalog.SupportsWritableFeishuChatSurface(
+                     processName,
+                     current.ClassName,
+                     current.FrameworkId,
+                     current.ControlType,
+                     textPattern is not null,
+                     hasFeishuChatParentShape));
             var textObservation = ObserveText(textPattern, includeSelectionCaret: hasEditableFocus);
             var shouldProbeCaret = hasEditableFocus;
             var textPattern2 = shouldProbeCaret
@@ -111,14 +147,16 @@ internal sealed class WindowsInputContextProbe : IDisposable
                 (!requiresCaretShape || IsCaretLike(managedCaret))
                     ? managedCaret
                     : null;
-            var uiAutomationCaret = textPattern2Caret ?? textPatternCaret;
-            var uiAutomationCaretMethod = textPattern2Caret is not null
+            var uiAutomationCaret = bitableEditorAnchor ?? sheetCellAnchor ?? textPattern2Caret ?? textPatternCaret;
+            var uiAutomationCaretMethod = bitableEditorAnchor is not null || sheetCellAnchor is not null
+                ? UiAutomationCaretMethod.TextPattern
+                : textPattern2Caret is not null
                 ? UiAutomationCaretMethod.TextPattern2
                 : textPatternCaret is not null
                     ? UiAutomationCaretMethod.TextPattern
                 : UiAutomationCaretMethod.None;
             var win32Caret = shouldProbeCaret ? Win32Caret(threadInfo) : null;
-            var msaaCaret = shouldProbeCaret
+            var msaaCaret = shouldProbeCaret && bitableEditorAnchor is null && sheetCellAnchor is null
                 ? MsaaCaret(focusWindow == 0 ? foregroundWindow : focusWindow)
                 : null;
             var inputState = hasEditableFocus
@@ -209,6 +247,113 @@ internal sealed class WindowsInputContextProbe : IDisposable
     private static TPattern? GetPattern<TPattern>(AutomationElement element, AutomationPattern pattern)
         where TPattern : class =>
         element.TryGetCurrentPattern(pattern, out var value) ? value as TPattern : null;
+
+    private static ScreenRect? TryGetFeishuSheetCellAnchor(AutomationElement element)
+    {
+        if (element.Current.ControlType != ControlType.Group ||
+            !string.Equals(element.Current.FrameworkId, "Chrome", StringComparison.Ordinal) ||
+            !string.IsNullOrWhiteSpace(element.Current.ClassName))
+        {
+            return null;
+        }
+
+        var ancestor = TreeWalker.ControlViewWalker.GetParent(element);
+        if (ancestor is null ||
+            ancestor.Current.ControlType != ControlType.Group ||
+            !string.IsNullOrWhiteSpace(ancestor.Current.ClassName))
+        {
+            return null;
+        }
+
+        var remainingAncestorTokens = new HashSet<string>(
+            ["cell-wrapper-element", "suite-sheet"],
+            StringComparer.Ordinal);
+        var scan = ancestor;
+        for (var depth = 0; depth < 6 && remainingAncestorTokens.Count > 0; depth++)
+        {
+            scan = TreeWalker.ControlViewWalker.GetParent(scan);
+            if (scan is null)
+            {
+                break;
+            }
+
+            remainingAncestorTokens.RemoveWhere(classPart =>
+                scan.Current.ClassName?.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .Contains(classPart, StringComparer.Ordinal) is true);
+        }
+
+        if (remainingAncestorTokens.Count > 0)
+        {
+            return null;
+        }
+
+        var cell = ancestor.Current.BoundingRectangle;
+        return double.IsFinite(cell.X) &&
+            double.IsFinite(cell.Y) &&
+            double.IsFinite(cell.Width) &&
+            double.IsFinite(cell.Height) &&
+            cell.Width >= 10 &&
+            cell.Height >= 10 &&
+            cell.Width <= 500 &&
+            cell.Height <= 100
+            ? new ScreenRect(cell.X, cell.Y, cell.Width, cell.Height)
+            : null;
+    }
+
+    private static ScreenRect? TryGetFeishuBitableEditorAnchor(
+        AutomationElement element,
+        bool hasActiveEditorAncestor,
+        bool hasTextPattern)
+    {
+        var current = element.Current;
+        if (!AppProfileCatalog.SupportsWritableFeishuBitableSurface(
+                current.ClassName,
+                current.FrameworkId,
+                current.ControlType,
+                hasTextPattern,
+                hasActiveEditorAncestor))
+        {
+            return null;
+        }
+
+        var bounds = current.BoundingRectangle;
+        return double.IsFinite(bounds.X) &&
+            double.IsFinite(bounds.Y) &&
+            double.IsFinite(bounds.Width) &&
+            double.IsFinite(bounds.Height) &&
+            bounds.Width >= 20 &&
+            bounds.Height >= 10
+            ? new ScreenRect(bounds.X, bounds.Y, bounds.Width, bounds.Height)
+            : null;
+    }
+
+    private static bool HasBitableActiveEditorAncestor(AutomationElement element)
+    {
+        var ancestor = TreeWalker.ControlViewWalker.GetParent(element);
+        for (var depth = 0; depth < 3 && ancestor is not null; depth++)
+        {
+            if (ancestor.Current.ClassName?.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .Contains("bitable-text-editor-container--active", StringComparer.Ordinal) is true)
+            {
+                return true;
+            }
+
+            ancestor = TreeWalker.ControlViewWalker.GetParent(ancestor);
+        }
+
+        return false;
+    }
+
+    private static bool HasFeishuChatParentShape(AutomationElement element)
+    {
+        var parent = TreeWalker.ControlViewWalker.GetParent(element);
+        return parent is not null &&
+            parent.Current.ControlType == ControlType.Group &&
+            parent.Current.ClassName?.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Contains("outerdocbody", StringComparer.Ordinal) is true &&
+            parent.Current.ClassName?.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Contains("editor-kit-outer-container", StringComparer.Ordinal) is true;
+    }
 
     public void Dispose() => _textPattern2CaretProbe.Dispose();
 
