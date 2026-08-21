@@ -315,6 +315,13 @@ public partial class App : System.Windows.Application
             };
         }
 
+        if (manual && MainWindow is MainWindow mainWindow)
+        {
+            var notice = PortableUpdateNotice.FromResult(result);
+            mainWindow.ShowUpdateNotice(notice);
+            await Task.Delay(notice.Duration).ConfigureAwait(true);
+        }
+
         _isExiting = true;
         _ = Dispatcher.BeginInvoke(() => Shutdown(0));
         return result;

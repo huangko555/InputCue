@@ -4,7 +4,9 @@ namespace InputCue.Windows.InputContext;
 
 internal static class PointerAnchorFallbackPolicy
 {
-    internal static readonly TimeSpan MaximumAge = TimeSpan.FromSeconds(2);
+    // One UIA timeout can be followed by the engine's two-second circuit cooldown.
+    // Keep the validated click long enough for the next healthy observation to use it.
+    internal static readonly TimeSpan MaximumAge = TimeSpan.FromSeconds(5);
 
     internal static InputContextDiagnostic Apply(
         InputContextDiagnostic diagnostic,

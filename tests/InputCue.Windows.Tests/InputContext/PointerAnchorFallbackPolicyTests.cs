@@ -76,6 +76,22 @@ public sealed class PointerAnchorFallbackPolicyTests
         Assert.Same(diagnostic, result);
     }
 
+    [Fact]
+    public void ClickSurvivesOneProbeTimeoutAndCircuitCooldown()
+    {
+        var diagnostic = Diagnostic();
+        var recoveringClick = Click(observedAt: Now - TimeSpan.FromSeconds(3));
+
+        var result = PointerAnchorFallbackPolicy.Apply(
+            diagnostic,
+            recoveringClick,
+            Now,
+            currentForegroundWindow: 10);
+
+        Assert.Equal(Eligibility.EditableCaret, result.Snapshot.Eligibility);
+        Assert.Equal(AnchorSource.PointerClick, result.Snapshot.AnchorSource);
+    }
+
     [Theory]
     [InlineData(11, 20)]
     [InlineData(10, 21)]

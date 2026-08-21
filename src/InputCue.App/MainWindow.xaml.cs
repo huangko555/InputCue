@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using InputCue.Core.Indicator;
 using InputCue.Core.InputContext;
@@ -37,6 +38,7 @@ public partial class MainWindow : Window, IDisposable
     private readonly InputContextTraceBuffer _history = new(HistoryCapacity);
     private readonly AppStayPromptPolicy _appStayPromptPolicy = new();
     private readonly DispatcherTimer _indicatorTimer;
+    private readonly DispatcherTimer _updateToastTimer;
     private readonly RawKeyboardInputMonitor _keyboardInputMonitor = new();
     private readonly Func<InputCueSettings, bool> _saveSettings;
     private readonly Func<bool, bool> _setStartWithWindows;
@@ -130,6 +132,8 @@ public partial class MainWindow : Window, IDisposable
             DispatcherPriority.Background,
             OnIndicatorTick,
             Dispatcher);
+        _updateToastTimer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher);
+        _updateToastTimer.Tick += OnUpdateToastTimerTick;
         _keyboardInputMonitor.EditingKeyPressed += OnEditingKeyPressed;
         _keyboardInputMonitor.PointerClickObserved += OnPointerClickObserved;
         _keyboardInputMonitor.PointerAnchorInvalidated += OnPointerAnchorInvalidated;
@@ -164,6 +168,8 @@ public partial class MainWindow : Window, IDisposable
         _watchCancellation?.Dispose();
         _watchCancellation = null;
         _indicatorTimer.Stop();
+        _updateToastTimer.Stop();
+        _updateToastTimer.Tick -= OnUpdateToastTimerTick;
         _keyboardInputMonitor.EditingKeyPressed -= OnEditingKeyPressed;
         _keyboardInputMonitor.PointerClickObserved -= OnPointerClickObserved;
         _keyboardInputMonitor.PointerAnchorInvalidated -= OnPointerAnchorInvalidated;
@@ -216,19 +222,91 @@ public partial class MainWindow : Window, IDisposable
         UpdateButton.IsEnabled = false;
         UpdateButton.ToolTip = "正在检查更新…";
         StatusText.Text = "正在检查更新…";
+        ShowUpdateNotice(PortableUpdateNotice.Checking);
         try
         {
             var result = await _checkForUpdates();
             StatusText.Text = result.Message;
+            ShowUpdateNotice(PortableUpdateNotice.FromResult(result));
         }
         catch (OperationCanceledException)
         {
+            HideUpdateNotice();
         }
         finally
         {
             UpdateButton.IsEnabled = true;
             UpdateButton.ToolTip = "检查更新";
         }
+    }
+
+    internal void ShowUpdateNotice(PortableUpdateNotice notice)
+    {
+        ArgumentNullException.ThrowIfNull(notice);
+        Dispatcher.VerifyAccess();
+
+        var (background, border, iconBackground, foreground, icon, iconForeground) =
+            notice.Tone switch
+            {
+                PortableUpdateNoticeTone.Information =>
+                    ("EFF6FF", "BFDBFE", "DCEEFF", "1E3A5F", "↻", "1683FF"),
+                PortableUpdateNoticeTone.Success =>
+                    ("F0FDF4", "BBF7D0", "DCFCE7", "14532D", "✓", "16A34A"),
+                PortableUpdateNoticeTone.Warning =>
+                    ("FFFBEB", "FDE68A", "FEF3C7", "78350F", "!", "D97706"),
+                PortableUpdateNoticeTone.Error =>
+                    ("FEF2F2", "FECACA", "FEE2E2", "7F1D1D", "×", "DC2626"),
+                _ => throw new ArgumentOutOfRangeException(nameof(notice), notice.Tone, null),
+            };
+
+        _updateToastTimer.Stop();
+        UpdateToast.Background = BrushFromHex(background);
+        UpdateToast.BorderBrush = BrushFromHex(border);
+        UpdateToastIconBackground.Background = BrushFromHex(iconBackground);
+        UpdateToastText.Foreground = BrushFromHex(foreground);
+        UpdateToastIcon.Foreground = BrushFromHex(iconForeground);
+        UpdateToastIcon.Text = icon;
+        UpdateToastText.Text = notice.Message;
+        UpdateToast.Visibility = Visibility.Visible;
+        UpdateToast.BeginAnimation(
+            OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160)));
+        UpdateToastTranslate.BeginAnimation(
+            TranslateTransform.YProperty,
+            new DoubleAnimation(-8, 0, TimeSpan.FromMilliseconds(160))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            });
+
+        if (notice.Duration > TimeSpan.Zero)
+        {
+            _updateToastTimer.Interval = notice.Duration;
+            _updateToastTimer.Start();
+        }
+    }
+
+    private void OnUpdateToastTimerTick(object? sender, EventArgs e)
+    {
+        _updateToastTimer.Stop();
+        HideUpdateNotice();
+    }
+
+    private void HideUpdateNotice()
+    {
+        _updateToastTimer.Stop();
+        var animation = new DoubleAnimation(
+            UpdateToast.Opacity,
+            0,
+            TimeSpan.FromMilliseconds(140));
+        animation.Completed += (_, _) => UpdateToast.Visibility = Visibility.Collapsed;
+        UpdateToast.BeginAnimation(OpacityProperty, animation);
+    }
+
+    private static SolidColorBrush BrushFromHex(string value)
+    {
+        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString($"#{value}"));
+        brush.Freeze();
+        return brush;
     }
 
     private void OnGitHubClick(object sender, RoutedEventArgs e) => _openGitHub();

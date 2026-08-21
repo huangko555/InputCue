@@ -1006,5 +1006,55 @@
                 </Border>
             </StackPanel>
         </ScrollViewer>
+
+        <Border x:Name="UpdateToast"
+                Grid.RowSpan="2"
+                Panel.ZIndex="100"
+                MaxWidth="430"
+                Margin="0,78,0,0"
+                Padding="14,12"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Background="#FFEFF6FF"
+                BorderBrush="#FFBFDBFE"
+                BorderThickness="1"
+                CornerRadius="9"
+                Opacity="0"
+                Visibility="Collapsed">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="12"
+                                  Color="#FF18181B"
+                                  Opacity="0.16"
+                                  ShadowDepth="3" />
+            </Border.Effect>
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="UpdateToastTranslate" Y="-8" />
+            </Border.RenderTransform>
+            <StackPanel Orientation="Horizontal">
+                <Border x:Name="UpdateToastIconBackground"
+                        Width="24"
+                        Height="24"
+                        Margin="0,0,10,0"
+                        VerticalAlignment="Top"
+                        Background="#FFDCEEFF"
+                        CornerRadius="12">
+                    <TextBlock x:Name="UpdateToastIcon"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Foreground="#FF1683FF"
+                               FontSize="13"
+                               FontWeight="Bold"
+                               Text="↻" />
+                </Border>
+                <TextBlock x:Name="UpdateToastText"
+                           MaxWidth="350"
+                           VerticalAlignment="Center"
+                           Foreground="#FF1E3A5F"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Text="正在检查更新…"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
     </Grid>
 </Window>
