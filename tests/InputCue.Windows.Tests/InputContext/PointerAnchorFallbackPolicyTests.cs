@@ -1,3 +1,4 @@
+using InputCue.Core.Indicator;
 using InputCue.Core.InputContext;
 using InputCue.Windows.InputContext;
 
@@ -90,6 +91,73 @@ public sealed class PointerAnchorFallbackPolicyTests
 
         Assert.Equal(Eligibility.EditableCaret, result.Snapshot.Eligibility);
         Assert.Equal(AnchorSource.PointerClick, result.Snapshot.AnchorSource);
+    }
+
+    [Fact]
+    public void EditingKeyKeepsRecentClickWhileDelayedProbeRecovers()
+    {
+        var recoveringClick = Click(observedAt: Now - TimeSpan.FromSeconds(3));
+
+        var shouldRetain = PointerAnchorFallbackPolicy.ShouldRetainAfterEditingKey(
+            recoveringClick,
+            Now,
+            currentForegroundWindow: 10);
+
+        Assert.True(shouldRetain);
+    }
+
+    [Fact]
+    public void ClickFallbackIsNotRejectedAsStaleAfterPositionUnknownObservation()
+    {
+        var rawDiagnostic = Diagnostic() with
+        {
+            Snapshot = Diagnostic().Snapshot with
+            {
+                ObservedAt = Now - TimeSpan.FromMilliseconds(100),
+            },
+        };
+        var click = Click(observedAt: Now + TimeSpan.FromMilliseconds(50));
+        var session = new IndicatorSession();
+        var appStayPolicy = new AppStayPromptPolicy();
+        _ = appStayPolicy.ShouldSuppressContextReplay(rawDiagnostic.Target, rawDiagnostic.Snapshot);
+        var hidden = session.Observe(rawDiagnostic.Snapshot, receivedAt: Now);
+
+        var effectiveDiagnostic = PointerAnchorFallbackPolicy.Apply(
+            rawDiagnostic,
+            click,
+            Now + TimeSpan.FromMilliseconds(50),
+            currentForegroundWindow: 10);
+        var suppress = appStayPolicy.ShouldSuppressContextReplay(
+            effectiveDiagnostic.Target,
+            effectiveDiagnostic.Snapshot);
+        var visible = session.Observe(
+            effectiveDiagnostic.Snapshot,
+            receivedAt: Now + TimeSpan.FromMilliseconds(50),
+            suppressContextReplay: suppress);
+
+        Assert.False(hidden.IsVisible);
+        Assert.False(suppress);
+        Assert.True(visible.IsVisible);
+        Assert.Equal(IndicatorReasonCode.ContextEstablished, visible.ReasonCode);
+    }
+
+    [Theory]
+    [InlineData(-1, 10)]
+    [InlineData(6, 10)]
+    [InlineData(1, 0)]
+    [InlineData(1, 11)]
+    public void EditingKeyRejectsClickOutsideItsRecoveryWindow(
+        int clickAgeSeconds,
+        long foregroundWindow)
+    {
+        var click = Click(observedAt: Now - TimeSpan.FromSeconds(clickAgeSeconds));
+
+        var shouldRetain = PointerAnchorFallbackPolicy.ShouldRetainAfterEditingKey(
+            click,
+            Now,
+            currentForegroundWindow: (nint)foregroundWindow);
+
+        Assert.False(shouldRetain);
     }
 
     [Theory]

@@ -831,11 +831,19 @@ public partial class MainWindow : Window, IDisposable
 
     private void OnEditingKeyPressed(object? sender, EventArgs e)
     {
+        var now = DateTimeOffset.UtcNow;
         var eligibility = _lastBaseDiagnostic?.Snapshot.Eligibility ?? Eligibility.Unknown;
-        _pointerClick = null;
-        if (_lastRawDiagnostic is { } rawDiagnostic)
+        var retainPointerClick = PointerAnchorFallbackPolicy.ShouldRetainAfterEditingKey(
+                _pointerClick,
+                now,
+                NativeMethods.GetForegroundWindow());
+        if (!retainPointerClick)
         {
-            _lastBaseDiagnostic = rawDiagnostic;
+            _pointerClick = null;
+            if (_lastRawDiagnostic is { } rawDiagnostic)
+            {
+                _lastBaseDiagnostic = rawDiagnostic;
+            }
         }
 
         if (_isFullScreenAutoPaused ||
@@ -846,7 +854,7 @@ public partial class MainWindow : Window, IDisposable
         }
 
         var wasVisible = _indicatorSession.Current.IsVisible;
-        var indicatorState = _indicatorSession.ObserveInputActivity(DateTimeOffset.UtcNow);
+        var indicatorState = _indicatorSession.ObserveInputActivity(now);
         if (!wasVisible)
         {
             return;

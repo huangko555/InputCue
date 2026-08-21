@@ -40,6 +40,9 @@ internal static class PointerAnchorFallbackPolicy
         {
             Snapshot = diagnostic.Snapshot with
             {
+                ObservedAt = diagnostic.Snapshot.ObservedAt >= click.ObservedAt
+                    ? diagnostic.Snapshot.ObservedAt
+                    : click.ObservedAt,
                 Eligibility = Eligibility.EditableCaret,
                 Anchor = click.Anchor,
                 AnchorSource = AnchorSource.PointerClick,
@@ -48,4 +51,14 @@ internal static class PointerAnchorFallbackPolicy
             },
         };
     }
+
+    internal static bool ShouldRetainAfterEditingKey(
+        PointerClickObservation? click,
+        DateTimeOffset now,
+        nint currentForegroundWindow) =>
+        click is not null &&
+        now >= click.ObservedAt &&
+        now - click.ObservedAt <= MaximumAge &&
+        currentForegroundWindow != 0 &&
+        click.ForegroundWindow == currentForegroundWindow;
 }
