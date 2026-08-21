@@ -9,4 +9,6 @@ coverage/
 *.suo
 *.nupkg
 *.snupkg
+__pycache__/
+*.pyc
 .local/

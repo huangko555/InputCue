@@ -1,9 +1,20 @@
 using System.Windows.Automation;
+using InputCue.Core.InputContext;
 
 namespace InputCue.Windows.InputContext;
 
 internal static class AppProfileCatalog
 {
+    internal static bool SupportsPointerAnchorFallback(
+        TargetDescriptor target,
+        string hitWindowClassName) =>
+        string.Equals(target.ProcessName, "wps", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(target.ClassName, "KxWpsView", StringComparison.Ordinal) &&
+        string.Equals(target.FrameworkId, "Qt", StringComparison.Ordinal) &&
+        string.Equals(target.ControlType, ControlType.Group.ProgrammaticName, StringComparison.Ordinal) &&
+        (string.Equals(hitWindowClassName, target.ClassName, StringComparison.Ordinal) ||
+            string.Equals(hitWindowClassName, "_WwG", StringComparison.Ordinal));
+
     internal static bool SupportsWritableWpsDocumentSurface(
         string? processName,
         string? className,

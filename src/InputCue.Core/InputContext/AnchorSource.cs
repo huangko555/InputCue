@@ -6,4 +6,5 @@ public enum AnchorSource
     UiAutomation,
     Win32,
     Msaa,
+    PointerClick,
 }

@@ -4,6 +4,7 @@
     <ProjectReference Include="..\InputCue.Core\InputCue.Core.csproj" />
     <ProjectReference Include="..\InputCue.Windows\InputCue.Windows.csproj" />
     <ProjectReference Include="..\InputCue.Overlay\InputCue.Overlay.csproj" />
+    <ProjectReference Include="..\InputCue.Update\InputCue.Update.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -11,11 +12,16 @@
     <Using Remove="System.Windows.Forms" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Resource Include="..\..\assets\app\InputCue.ico" Link="Assets\InputCue.ico" />
+  </ItemGroup>
+
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\assets\app\InputCue.ico</ApplicationIcon>
     <AssemblyName>InputCue</AssemblyName>
     <RootNamespace>InputCue.App</RootNamespace>
     <UseWindowsForms>true</UseWindowsForms>

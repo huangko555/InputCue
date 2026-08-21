@@ -6,7 +6,7 @@
 
 目前没有找到一个公开、可审计、无需注入的 WPS Windows API，能够直接返回 `KxWpsView` 自绘正文插入光标的屏幕坐标。InputTip、ImTip 和 `GetCaretPosEx` 都没有 WPS 专用 provider；它们能成功的前提仍是目标窗口暴露 UIA、MSAA、Win32 caret 或 Java Access Bridge 等标准接口。
 
-因此建议保持当前 `PositionUnknown` 安全降级，同时做一个只读 TSF 可行性原型。只有在 WPS 确实暴露 `ITfContextView`/`ITfRange` 后，才进入正式实现；不要用鼠标位置冒充 caret，也不要把远程线程注入作为 V1 默认方案。
+因此标准 Caret 路径仍应保持 `PositionUnknown` 安全降级，同时保留只读 TSF 可行性原型。WPS 正文可以使用应用画像限定的短期点击锚点补齐提示位置，但不能读取任意当前鼠标位置冒充 Caret，也不要把远程线程注入作为 V1 默认方案。
 
 ## 证据等级
 
@@ -88,7 +88,7 @@ WPS 官方开发入口为 [`platform.wps.cn`](https://platform.wps.cn/)。截至
 
 ## 给 InputCue 的执行建议
 
-1. 保持 WPS 正文 `PositionUnknown` 时隐藏，避免回退到鼠标坐标。
+1. WPS 正文 `PositionUnknown` 默认隐藏；只有经过目标窗口类、非拖动点击和有效期校验的 `PointerClick` Anchor 才允许短期显示。
 2. 新增独立 TSF 可行性探针，仅记录接口是否存在、HRESULT、矩形和耗时；不接入提示层，不读取正文内容。
 3. 若 TSF 也无 context/range，正式记录“当前 WPS 版本无公开无注入定位方案”，转向产品级降级（不显示）而不是继续增加高风险 Hook。
 4. 每次 WPS、Windows 或输入法升级后重新跑探针；不要把单次成功固化成通用兼容承诺。

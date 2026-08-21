@@ -1,0 +1,57 @@
+name: Release portable
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.302
+
+      - name: Validate version
+        id: version
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw 'Release tags must use vMAJOR.MINOR.PATCH.'
+          }
+          "value=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Test
+        run: dotnet test InputCue.sln --configuration Release
+
+      - name: Build signed portable release
+        shell: pwsh
+        env:
+          UPDATE_SIGNING_PRIVATE_KEY_PEM: ${{ secrets.UPDATE_SIGNING_PRIVATE_KEY_PEM }}
+        run: ./scripts/package-portable.ps1 -Version '${{ steps.version.outputs.value }}'
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ steps.version.outputs.value }}'
+          $releaseRoot = Join-Path $PWD "artifacts/release/$version"
+          gh release create "v$version" `
+            (Join-Path $releaseRoot "InputCue-$version-win-x64-portable.zip") `
+            (Join-Path $releaseRoot 'portable-releases.json') `
+            (Join-Path $releaseRoot 'portable-releases.json.sig') `
+            (Join-Path $releaseRoot 'SHA256SUMS.txt') `
+            --verify-tag `
+            --generate-notes `
+            --title "InputCue v$version"

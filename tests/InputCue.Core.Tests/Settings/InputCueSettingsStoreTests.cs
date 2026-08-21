@@ -23,9 +23,8 @@ public sealed class InputCueSettingsStoreTests
         using var directory = new TemporaryDirectory();
         var path = Path.Combine(directory.Path, "settings.json");
         var store = new InputCueSettingsStore(path);
-        var first = new InputCueSettings(false, 800, 250);
+        var first = new InputCueSettings(800, 250);
         var second = new InputCueSettings(
-            true,
             1200,
             400,
             IndicatorPlacement.BottomLeft,
@@ -34,6 +33,8 @@ public sealed class InputCueSettingsStoreTests
             IndicatorSizeDip: 18,
             Style: IndicatorStyle.LightBadge,
             LightBadgeSizeDip: 44,
+            LessDisplay: true,
+            FullScreenAutoPause: true,
             DotAppearance: new(IndicatorPlacement.TopLeft, -4, 6, 15),
             LightBadgeAppearance: new(IndicatorPlacement.Right, 8, -3, 42),
             ShadowBadgeAppearance: new(IndicatorPlacement.Bottom, -7, 9, 48));
@@ -65,7 +66,6 @@ public sealed class InputCueSettingsStoreTests
 
         var settings = store.Load();
 
-        Assert.False(settings.IndicatorEnabled);
         Assert.Equal(725, settings.DisplayDurationMilliseconds);
         Assert.Equal(225, settings.MinimumDisplayDurationMilliseconds);
         Assert.Equal(InputCueSettings.DefaultPlacement, settings.Placement);
@@ -74,13 +74,14 @@ public sealed class InputCueSettingsStoreTests
         Assert.Equal(InputCueSettings.DefaultIndicatorSizeDip, settings.IndicatorSizeDip);
         Assert.Equal(IndicatorStyle.Dot, settings.Style);
         Assert.Equal(InputCueSettings.DefaultLightBadgeSizeDip, settings.LightBadgeSizeDip);
+        Assert.True(settings.LessDisplay);
+        Assert.True(settings.FullScreenAutoPause);
     }
 
     [Fact]
     public void LegacyCommonAppearanceIsInheritedByEachStyle()
     {
         var settings = new InputCueSettings(
-            true,
             1000,
             300,
             IndicatorPlacement.TopRight,
@@ -123,7 +124,7 @@ public sealed class InputCueSettingsStoreTests
         var path = Path.Combine(directory.Path, "settings.json");
         var store = new InputCueSettingsStore(path);
 
-        var saved = store.TrySave(new InputCueSettings(true, 60001, 300));
+        var saved = store.TrySave(new InputCueSettings(60001, 300));
 
         Assert.False(saved);
         Assert.False(File.Exists(path));
@@ -146,7 +147,6 @@ public sealed class InputCueSettingsStoreTests
         var store = new InputCueSettingsStore(path);
 
         var saved = store.TrySave(new InputCueSettings(
-            true,
             1000,
             300,
             placement,
@@ -171,7 +171,6 @@ public sealed class InputCueSettingsStoreTests
         var store = new InputCueSettingsStore(path);
 
         var saved = store.TrySave(new InputCueSettings(
-            true,
             1000,
             300,
             Style: style,
@@ -188,7 +187,6 @@ public sealed class InputCueSettingsStoreTests
         var path = Path.Combine(directory.Path, "settings.json");
         var store = new InputCueSettingsStore(path);
         var settings = new InputCueSettings(
-            true,
             1000,
             300,
             ShadowBadgeAppearance: new(

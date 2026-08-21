@@ -16,6 +16,7 @@ public sealed class IndicatorSession
     private DateTimeOffset? _displayUntil;
     private DateTimeOffset? _fadeUntil;
     private DateTimeOffset? _lastInputActivityAt;
+    private InputState? _lastDisplayEligibleInputState;
     private bool _textActivityPending;
 
     public IndicatorSession(IndicatorSessionOptions? options = null)
@@ -68,12 +69,12 @@ public sealed class IndicatorSession
             return _state;
         }
 
-        var inputStateChanged = previousContext is not null &&
-            IsDisplayEligible(previousContext.Eligibility) &&
-            previousContext.InputState != snapshot.InputState;
+        var inputStateChanged = _lastDisplayEligibleInputState is { } previousInputState &&
+            previousInputState != snapshot.InputState;
         var contextEstablished = isNewGeneration ||
             previousContext is null ||
             !IsDisplayEligible(previousContext.Eligibility);
+        _lastDisplayEligibleInputState = snapshot.InputState;
         var shouldReplay = inputStateChanged || contextEstablished;
         var shouldSuppressContextReplay = contextEstablished &&
             !inputStateChanged &&

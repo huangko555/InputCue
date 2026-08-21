@@ -313,6 +313,33 @@ public sealed class IndicatorSessionTests
     }
 
     [Fact]
+    public void SuppressedContextReplayStillShowsAnInputModeChangeAfterFocusLoss()
+    {
+        var session = new IndicatorSession(Transient);
+        _ = session.Observe(Snapshot(
+            1,
+            Start,
+            inputState: InputState.Chinese));
+        _ = session.Observe(Snapshot(
+            2,
+            Start.AddMilliseconds(100),
+            Eligibility.NoEditableFocus,
+            inputState: InputState.Unknown));
+
+        var changed = session.Observe(
+            Snapshot(
+                3,
+                Start.AddMilliseconds(300),
+                inputState: InputState.English),
+            receivedAt: null,
+            suppressContextReplay: true);
+
+        Assert.Equal(IndicatorPhase.Visible, changed.Phase);
+        Assert.Equal(InputState.English, changed.InputState);
+        Assert.Equal(IndicatorReasonCode.InputStateChanged, changed.ReasonCode);
+    }
+
+    [Fact]
     public void AlwaysVisibleModeReplaysALikelyContextReturn()
     {
         var session = new IndicatorSession(Transient with { AlwaysVisible = true });

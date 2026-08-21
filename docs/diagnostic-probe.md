@@ -35,7 +35,7 @@ dotnet run --project src/InputCue.App/InputCue.App.csproj
 2. 点击输入框并输入几个字符；
 3. 返回 InputCue。
 
-期望：`EditableCaret`。如果可编辑已确认但所有 Caret 来源都不可用，可以暂时是 `PositionUnknown`，但必须记录下来，不能用鼠标位置伪装成功。
+期望：`EditableCaret`。如果可编辑已确认但所有 Caret 来源都不可用，可以暂时是 `PositionUnknown`，但必须记录下来；只有显式白名单应用中经过非拖动点击、目标一致性和短有效期校验的 `PointerClick` 才能作为降级 Anchor。
 
 ### 1.1 可编辑输入框全选
 

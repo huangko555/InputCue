@@ -13,4 +13,5 @@ public enum ReasonCode
     InsufficientPrivilege,
     ConflictingEvidence,
     SourceUnavailable,
+    PointerAnchorFallback,
 }

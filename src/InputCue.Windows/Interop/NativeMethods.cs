@@ -7,9 +7,12 @@ internal static partial class NativeMethods
     internal const uint CoInitMultiThreaded = 0x0;
     internal const uint ClassContextInprocServer = 0x1;
     internal const uint EventObjectFocus = 0x8005;
+    internal const uint EventObjectLocationChange = 0x800B;
     internal const uint EventSystemForeground = 0x0003;
     internal const int RpcChangedMode = unchecked((int)0x80010106);
     internal const uint ObjectIdCaret = 0xFFFFFFF8;
+    internal const int ObjectIdWindow = 0;
+    internal const uint MonitorDefaultToNearest = 0x00000002;
     internal const uint PeekMessageNoRemove = 0x0000;
     internal const uint SendMessageTimeoutBlock = 0x0001;
     internal const uint SendMessageTimeoutAbortIfHung = 0x0002;
@@ -22,6 +25,44 @@ internal static partial class NativeMethods
 
     [LibraryImport("user32.dll")]
     internal static partial nint GetForegroundWindow();
+
+    [LibraryImport("user32.dll")]
+    internal static partial nint GetShellWindow();
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool IsWindowVisible(nint window);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool IsIconic(nint window);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetWindowRect(nint window, out NativeRect rectangle);
+
+    [LibraryImport("user32.dll")]
+    internal static partial nint MonitorFromWindow(nint window, uint flags);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetMonitorInfo(nint monitor, ref MonitorInfo monitorInfo);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetCursorPos(out NativePoint point);
+
+    [LibraryImport("user32.dll")]
+    internal static partial nint WindowFromPoint(NativePoint point);
+
+    [DllImport("user32.dll", EntryPoint = "GetClassNameW", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern int GetClassName(nint window, char[] className, int maximumCount);
+
+    [LibraryImport("user32.dll")]
+    internal static partial short GetAsyncKeyState(int virtualKey);
+
+    [LibraryImport("user32.dll")]
+    internal static partial int GetSystemMetrics(int index);
 
     [LibraryImport("kernel32.dll")]
     internal static partial uint GetCurrentThreadId();
@@ -234,4 +275,18 @@ internal struct NativeRect
     internal int Top;
     internal int Right;
     internal int Bottom;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct MonitorInfo
+{
+    internal uint Size;
+    internal NativeRect Monitor;
+    internal NativeRect WorkArea;
+    internal uint Flags;
+
+    internal static MonitorInfo Create() => new()
+    {
+        Size = (uint)Marshal.SizeOf<MonitorInfo>(),
+    };
 }

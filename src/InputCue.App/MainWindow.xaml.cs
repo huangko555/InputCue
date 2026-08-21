@@ -12,7 +12,9 @@ using InputCue.Core.Indicator;
 using InputCue.Core.InputContext;
 using InputCue.Core.Settings;
 using InputCue.Overlay;
+using InputCue.Update;
 using InputCue.Windows.InputContext;
+using InputCue.Windows.Interop;
 using Microsoft.Win32;
 
 namespace InputCue.App;
@@ -33,15 +35,22 @@ public partial class MainWindow : Window, IDisposable
     private IndicatorSession _indicatorSession;
     private readonly IndicatorOverlayPresenter _overlayPresenter = new();
     private readonly InputContextTraceBuffer _history = new(HistoryCapacity);
+    private readonly AppStayPromptPolicy _appStayPromptPolicy = new();
     private readonly DispatcherTimer _indicatorTimer;
     private readonly RawKeyboardInputMonitor _keyboardInputMonitor = new();
     private readonly Func<InputCueSettings, bool> _saveSettings;
     private readonly Func<bool, bool> _setStartWithWindows;
+    private readonly Func<Task<PortableUpdateResult>> _checkForUpdates;
+    private readonly Action _openGitHub;
     private InputContextDiagnostic? _lastBaseDiagnostic;
+    private InputContextDiagnostic? _lastRawDiagnostic;
+    private PointerClickObservation? _pointerClick;
     private CancellationTokenSource? _watchCancellation;
     private bool _capsLockEnabled;
     private bool _disposed;
-    private bool _indicatorEnabled;
+    private bool _lessDisplay;
+    private bool _fullScreenAutoPause;
+    private bool _isFullScreenAutoPaused;
     private bool _isRecovering;
     private bool _settingsInitialized;
     private bool _startupSettingInitialized;
@@ -66,19 +75,29 @@ public partial class MainWindow : Window, IDisposable
 
     public bool IsRecovering => IsWatching && _isRecovering;
 
+    public bool IsFullScreenAutoPaused => IsWatching && _isFullScreenAutoPaused;
+
     public MainWindow(
         InputCueSettings settings,
         Func<InputCueSettings, bool> saveSettings,
         bool startWithWindows,
-        Func<bool, bool> setStartWithWindows)
+        Func<bool, bool> setStartWithWindows,
+        Func<Task<PortableUpdateResult>> checkForUpdates,
+        Action openGitHub)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(saveSettings);
         ArgumentNullException.ThrowIfNull(setStartWithWindows);
+        ArgumentNullException.ThrowIfNull(checkForUpdates);
+        ArgumentNullException.ThrowIfNull(openGitHub);
         _saveSettings = saveSettings;
         _setStartWithWindows = setStartWithWindows;
+        _checkForUpdates = checkForUpdates;
+        _openGitHub = openGitHub;
         InitializeComponent();
-        _indicatorEnabled = settings.IndicatorEnabled;
+        VersionText.Text = FormatVersion(typeof(MainWindow).Assembly.GetName().Version);
+        _lessDisplay = settings.LessDisplay;
+        _fullScreenAutoPause = settings.FullScreenAutoPause;
         _displayDurationMilliseconds = settings.DisplayDurationMilliseconds;
         _minimumDisplayDurationMilliseconds = settings.MinimumDisplayDurationMilliseconds;
         _style = settings.Style;
@@ -112,7 +131,10 @@ public partial class MainWindow : Window, IDisposable
             OnIndicatorTick,
             Dispatcher);
         _keyboardInputMonitor.EditingKeyPressed += OnEditingKeyPressed;
-        IndicatorEnabledCheckBox.IsChecked = _indicatorEnabled;
+        _keyboardInputMonitor.PointerClickObserved += OnPointerClickObserved;
+        _keyboardInputMonitor.PointerAnchorInvalidated += OnPointerAnchorInvalidated;
+        LessDisplayCheckBox.IsChecked = _lessDisplay;
+        FullScreenAutoPauseCheckBox.IsChecked = _fullScreenAutoPause;
         StartWithWindowsCheckBox.IsChecked = startWithWindows;
         _settingsInitialized = true;
         _startupSettingInitialized = true;
@@ -143,6 +165,8 @@ public partial class MainWindow : Window, IDisposable
         _watchCancellation = null;
         _indicatorTimer.Stop();
         _keyboardInputMonitor.EditingKeyPressed -= OnEditingKeyPressed;
+        _keyboardInputMonitor.PointerClickObserved -= OnPointerClickObserved;
+        _keyboardInputMonitor.PointerAnchorInvalidated -= OnPointerAnchorInvalidated;
         _keyboardInputMonitor.Dispose();
         _engine.Dispose();
         _overlayPresenter.Dispose();
@@ -167,40 +191,6 @@ public partial class MainWindow : Window, IDisposable
         StopWatching();
     }
 
-    private void OnIndicatorEnabledChanged(object sender, RoutedEventArgs e)
-    {
-        _indicatorEnabled = IndicatorEnabledCheckBox.IsChecked is true;
-        var saved = PersistSettings();
-        if (!_indicatorEnabled)
-        {
-            _overlayPresenter.Hide();
-            _indicatorTimer.Stop();
-            ShowPreviewOverlay();
-            if (!saved)
-            {
-                StatusText.Text = "提示已关闭，但设置未能保存。";
-            }
-
-            return;
-        }
-
-        if (IsActive)
-        {
-            ShowPreviewOverlay();
-        }
-        else if (_lastBaseDiagnostic is { } diagnostic)
-        {
-            var indicatorState = _indicatorSession.Advance(DateTimeOffset.UtcNow);
-            _overlayPresenter.Update(indicatorState);
-            UpdateIndicatorTimer(indicatorState, diagnostic.Snapshot.Eligibility);
-        }
-
-        if (!saved)
-        {
-            StatusText.Text = "提示已启用，但设置未能保存。";
-        }
-    }
-
     private void OnStartWithWindowsChanged(object sender, RoutedEventArgs e)
     {
         if (!_startupSettingInitialized)
@@ -219,6 +209,67 @@ public partial class MainWindow : Window, IDisposable
         StartWithWindowsCheckBox.IsChecked = !requested;
         _startupSettingInitialized = true;
         StatusText.Text = "开机启动设置未能保存。";
+    }
+
+    private async void OnUpdateClick(object sender, RoutedEventArgs e)
+    {
+        UpdateButton.IsEnabled = false;
+        UpdateButton.ToolTip = "正在检查更新…";
+        StatusText.Text = "正在检查更新…";
+        try
+        {
+            var result = await _checkForUpdates();
+            StatusText.Text = result.Message;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            UpdateButton.IsEnabled = true;
+            UpdateButton.ToolTip = "检查更新";
+        }
+    }
+
+    private void OnGitHubClick(object sender, RoutedEventArgs e) => _openGitHub();
+
+    private void OnLessDisplayChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_settingsInitialized)
+        {
+            return;
+        }
+
+        _lessDisplay = LessDisplayCheckBox.IsChecked is true;
+        _appStayPromptPolicy.Reset();
+        StatusText.Text = PersistSettings()
+            ? _lessDisplay
+                ? "已启用更少显示：同一应用停留期间仅提示一次。"
+                : "已关闭更少显示。"
+            : "更少显示设置未能保存。";
+    }
+
+    private void OnWindowActivated(object? sender, EventArgs e)
+    {
+        _appStayPromptPolicy.Reset();
+        UpdateFullScreenAutoPauseState();
+        OnPreviewLayoutChanged(sender, e);
+    }
+
+    private void OnFullScreenAutoPauseChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_settingsInitialized)
+        {
+            return;
+        }
+
+        _fullScreenAutoPause = FullScreenAutoPauseCheckBox.IsChecked is true;
+        UpdateFullScreenAutoPauseState();
+        StatusText.Text = PersistSettings()
+            ? _fullScreenAutoPause
+                ? "已启用全屏自动暂停。"
+                : "已关闭全屏自动暂停。"
+            : "全屏自动暂停设置未能保存。";
     }
 
     private void OnTimingSettingsClick(object sender, RoutedEventArgs e)
@@ -506,6 +557,7 @@ public partial class MainWindow : Window, IDisposable
         var cancellation = _watchCancellation;
         _watchCancellation = null;
         _isRecovering = false;
+        _isFullScreenAutoPaused = false;
         cancellation?.Cancel();
         cancellation?.Dispose();
         _overlayPresenter.Hide();
@@ -524,11 +576,13 @@ public partial class MainWindow : Window, IDisposable
             ? "已暂停"
             : _isRecovering
                 ? "正在恢复"
+                : _isFullScreenAutoPaused
+                    ? "全屏暂停"
                 : "正在监听";
-        WatchingStatusText.Foreground = isWatching && !_isRecovering
+        WatchingStatusText.Foreground = isWatching && !_isRecovering && !_isFullScreenAutoPaused
             ? (Brush)FindResource("MutedBrush")
             : (Brush)FindResource("PausedBrush");
-        WatchingStatusDot.Fill = isWatching && !_isRecovering
+        WatchingStatusDot.Fill = isWatching && !_isRecovering && !_isFullScreenAutoPaused
             ? (Brush)FindResource("ListeningBrush")
             : (Brush)FindResource("PausedBrush");
     }
@@ -591,27 +645,69 @@ public partial class MainWindow : Window, IDisposable
 
     private void ShowDiagnostic(InputContextDiagnostic diagnostic)
     {
-        _lastBaseDiagnostic = diagnostic;
+        _lastRawDiagnostic = diagnostic;
+        UpdateFullScreenAutoPauseState();
+        if (_isFullScreenAutoPaused)
+        {
+            _lastBaseDiagnostic = diagnostic;
+            return;
+        }
+
+        var effectiveDiagnostic = PointerAnchorFallbackPolicy.Apply(
+            diagnostic,
+            _pointerClick,
+            DateTimeOffset.UtcNow,
+            NativeMethods.GetForegroundWindow());
+        _lastBaseDiagnostic = effectiveDiagnostic;
         _capsLockEnabled = UiCapsLockProbe.IsEnabled();
-        PresentDiagnostic(ApplyCapsLock(diagnostic, _capsLockEnabled));
+        PresentDiagnostic(ApplyCapsLock(effectiveDiagnostic, _capsLockEnabled));
+    }
+
+    private void OnPointerClickObserved(PointerClickObservation click)
+    {
+        if (_isFullScreenAutoPaused)
+        {
+            return;
+        }
+
+        _pointerClick = click;
+        if (_watchCancellation is not null &&
+            !IsActive &&
+            _lastRawDiagnostic is { } diagnostic)
+        {
+            ShowDiagnostic(diagnostic);
+        }
+    }
+
+    private void OnPointerAnchorInvalidated(object? sender, EventArgs e)
+    {
+        _pointerClick = null;
+        if (_lastRawDiagnostic is { } rawDiagnostic)
+        {
+            _lastBaseDiagnostic = rawDiagnostic;
+        }
     }
 
     private void PresentDiagnostic(InputContextDiagnostic diagnostic)
     {
         _history.Add(diagnostic);
+        if (_isFullScreenAutoPaused)
+        {
+            _overlayPresenter.Hide();
+            _indicatorTimer.Stop();
+            return;
+        }
+
+        var suppressContextReplay = diagnostic.SuppressContextReplay ||
+            _lessDisplay && _appStayPromptPolicy.ShouldSuppressContextReplay(
+                diagnostic.Target,
+                diagnostic.Snapshot);
         var indicatorState = _indicatorSession.Observe(
             diagnostic.Snapshot,
             DateTimeOffset.UtcNow,
             diagnostic.IsPositionStabilization,
-            diagnostic.SuppressContextReplay);
-        if (_indicatorEnabled)
-        {
-            _overlayPresenter.Update(indicatorState);
-        }
-        else
-        {
-            _overlayPresenter.Hide();
-        }
+            suppressContextReplay);
+        _overlayPresenter.Update(indicatorState);
 
         UpdateIndicatorTimer(indicatorState, diagnostic.Snapshot.Eligibility);
 
@@ -623,23 +719,32 @@ public partial class MainWindow : Window, IDisposable
 
     private void OnIndicatorTick(object? sender, EventArgs e)
     {
+        if (_isFullScreenAutoPaused)
+        {
+            _indicatorTimer.Stop();
+            return;
+        }
+
         var now = DateTimeOffset.UtcNow;
         var capsLockEnabled = UiCapsLockProbe.IsEnabled();
         if (capsLockEnabled != _capsLockEnabled)
         {
             _capsLockEnabled = capsLockEnabled;
-            if (!IsActive && _lastBaseDiagnostic is { } diagnostic)
+            if (!IsActive && _lastRawDiagnostic is { } rawDiagnostic)
             {
-                PresentDiagnostic(ApplyCapsLock(diagnostic, capsLockEnabled, now));
+                var effectiveDiagnostic = PointerAnchorFallbackPolicy.Apply(
+                    rawDiagnostic,
+                    _pointerClick,
+                    now,
+                    NativeMethods.GetForegroundWindow());
+                _lastBaseDiagnostic = effectiveDiagnostic;
+                PresentDiagnostic(ApplyCapsLock(effectiveDiagnostic, capsLockEnabled, now));
                 return;
             }
         }
 
         var indicatorState = _indicatorSession.Advance(now);
-        if (_indicatorEnabled)
-        {
-            _overlayPresenter.Update(indicatorState);
-        }
+        _overlayPresenter.Update(indicatorState);
 
         UpdateIndicatorTimer(
             indicatorState,
@@ -649,7 +754,13 @@ public partial class MainWindow : Window, IDisposable
     private void OnEditingKeyPressed(object? sender, EventArgs e)
     {
         var eligibility = _lastBaseDiagnostic?.Snapshot.Eligibility ?? Eligibility.Unknown;
-        if (!_indicatorEnabled ||
+        _pointerClick = null;
+        if (_lastRawDiagnostic is { } rawDiagnostic)
+        {
+            _lastBaseDiagnostic = rawDiagnostic;
+        }
+
+        if (_isFullScreenAutoPaused ||
             IsActive ||
             eligibility is not (Eligibility.EditableCaret or Eligibility.EditableSelection))
         {
@@ -669,7 +780,7 @@ public partial class MainWindow : Window, IDisposable
 
     private void UpdateIndicatorTimer(IndicatorViewState indicatorState, Eligibility eligibility)
     {
-        if (!_indicatorEnabled || _watchCancellation is null)
+        if (_watchCancellation is null || _isFullScreenAutoPaused)
         {
             _indicatorTimer.Stop();
             return;
@@ -711,6 +822,28 @@ public partial class MainWindow : Window, IDisposable
                     capsLockEnabled),
             },
         };
+
+    private void UpdateFullScreenAutoPauseState()
+    {
+        var shouldPause = _fullScreenAutoPause &&
+            !IsActive &&
+            FullScreenWindowDetector.IsForegroundWindowFullScreen();
+        if (shouldPause == _isFullScreenAutoPaused)
+        {
+            return;
+        }
+
+        _isFullScreenAutoPaused = shouldPause;
+        if (shouldPause)
+        {
+            _pointerClick = null;
+            _overlayPresenter.Hide();
+            _indicatorTimer.Stop();
+        }
+
+        RefreshWatchingStatus();
+        WatchingStateChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     private static IndicatorSession CreateIndicatorSession(
         int displayDurationMilliseconds,
@@ -1091,6 +1224,10 @@ public partial class MainWindow : Window, IDisposable
         _ => "右侧",
     };
 
+    private static string FormatVersion(Version? version) => version is null
+        ? "v—"
+        : $"v{version.Major}.{version.Minor}.{Math.Max(0, version.Build)}";
+
     private bool PersistSettings()
     {
         if (!_settingsInitialized)
@@ -1100,7 +1237,6 @@ public partial class MainWindow : Window, IDisposable
 
         var activeAppearance = GetAppearance(_style);
         return _saveSettings(new InputCueSettings(
-            _indicatorEnabled,
             _displayDurationMilliseconds,
             _minimumDisplayDurationMilliseconds,
             activeAppearance.Placement,
@@ -1115,7 +1251,9 @@ public partial class MainWindow : Window, IDisposable
             _capsLockDotColor,
             _dotAppearance,
             _lightBadgeAppearance,
-            _shadowBadgeAppearance));
+            _shadowBadgeAppearance,
+            _lessDisplay,
+            _fullScreenAutoPause));
     }
 
     private string FormatDiagnostic(InputContextDiagnostic diagnostic)

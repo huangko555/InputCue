@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="480" viewBox="0 0 1200 480" role="img" aria-labelledby="title desc">
+  <title id="title">InputCue：克制的 Windows 输入状态提示器</title>
+  <desc id="desc">深色横幅，展示 InputCue 标志、产品主张，以及围绕输入光标的四种输入状态。</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#09090B"/><stop offset="1" stop-color="#18181B"/></linearGradient>
+    <radialGradient id="glow"><stop offset="0" stop-color="#2F7FD6" stop-opacity=".28"/><stop offset="1" stop-color="#2F7FD6" stop-opacity="0"/></radialGradient>
+    <filter id="soft-shadow" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#000000" flood-opacity=".35"/></filter>
+  </defs>
+  <rect width="1200" height="480" rx="28" fill="url(#background)"/>
+  <path d="M0 389H1200M0 419H1200M0 449H1200M812 0V480M842 0V480M872 0V480M902 0V480M932 0V480M962 0V480M992 0V480M1022 0V480M1052 0V480M1082 0V480M1112 0V480M1142 0V480M1172 0V480" stroke="#FFFFFF" stroke-opacity=".035"/>
+  <circle cx="963" cy="237" r="250" fill="url(#glow)"/>
+  <image x="62" y="55" width="72" height="72" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmAAADfklEQVR4nO3dUWrDMBBAQavk/ldWoReoCLZj5c18h6IW+tgQb3QcAAAAAAAAAMC3GAuvmTecAyrG8SA/nz4A8DkCAGECAGECAGECAGECAGECAGECAGECAGGvs37QnB4YpGuMRz3gt8wEAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGGnbQMCS+5Ym11eTTQBQJgAQJgAQJgAQJgAQJgAQJgAQJgAQJgAQJgAQJgAQJgAQJgAQJgAQJgAQJgAQJgAQJhvBIrcQz/nHV9Ew25MABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABAmABCWvB343Rt2d7br7+xW42uZACBMACBMACBMACBMACBMACBMACBMACBMACBMACBMACBMACAsuQy081LKu0s9Tzj/rgtJ38wEAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGECAGGvTx9gF2OMY2e7n59rmAAgTAAgTAAgTAAgTAAgTAAgTAAgTAAgTAAgTAAgTAAgTAAgzDLQojnnsfNSzxPObyHpeUwAECYAECYAECYAECYAECYAEJb8GPAJH4kV+bs/jwkAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwgQAwpIXg+zM5RqcyQQAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYQIAYWPhNfOGcwD3/l//MQFAmABAmABAmABAmABAmABAmABAmABAmABA2PITQxfypCGcy5OAwP+8BYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAYAwAQAAAAAAAAAAAAAAgGMrv0fEI+rBkrYUAAAAAElFTkSuQmCC"/>
+  <text x="154" y="103" fill="#FAFAFA" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="34" font-weight="700">InputCue</text>
+  <text x="66" y="183" fill="#FAFAFA" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="56" font-weight="700">输入状态，恰到好处。</text>
+  <text x="68" y="236" fill="#A1A1AA" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="23">在你正在输入时，提示当前的中 / 英 / ENG / 大写状态。</text>
+  <g transform="translate(68 291)" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14" font-weight="600" letter-spacing="1.1"><rect width="116" height="34" rx="17" fill="#27272A" stroke="#3F3F46"/><text x="58" y="22" text-anchor="middle" fill="#D4D4D8">WINDOWS</text><rect x="128" width="112" height="34" rx="17" fill="#27272A" stroke="#3F3F46"/><text x="184" y="22" text-anchor="middle" fill="#D4D4D8">PORTABLE</text><rect x="252" width="150" height="34" rx="17" fill="#27272A" stroke="#3F3F46"/><text x="327" y="22" text-anchor="middle" fill="#D4D4D8">GPL-3.0-ONLY</text></g>
+  <g transform="translate(748 65)" filter="url(#soft-shadow)">
+    <rect width="382" height="346" rx="24" fill="#FAFAFA"/><circle cx="26" cy="25" r="5" fill="#E5534B"/><circle cx="44" cy="25" r="5" fill="#D99000"/><circle cx="62" cy="25" r="5" fill="#2F9E68"/><rect x="26" y="54" width="330" height="1" fill="#E4E4E7"/>
+    <text x="32" y="103" fill="#18181B" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="26" font-weight="600">今天从这里开始输入</text><rect x="31" y="123" width="2" height="40" rx="1" fill="#2F7FD6"/>
+    <g transform="translate(61 191)"><rect x="6" y="6" width="52" height="52" fill="#09090B"/><rect width="52" height="52" fill="#FFFFFF" stroke="#09090B" stroke-width="3.5"/><text x="26" y="37" text-anchor="middle" fill="#09090B" font-family="Microsoft YaHei, sans-serif" font-size="28" font-weight="700">中</text></g>
+    <g transform="translate(147 191)"><rect width="52" height="52" rx="2" fill="#FCFCFC" stroke="#D4D4D8"/><text x="26" y="37" text-anchor="middle" fill="#52525B" font-family="Microsoft YaHei, sans-serif" font-size="28" font-weight="600">英</text></g>
+    <g transform="translate(237 208)"><circle cx="10" cy="10" r="9" fill="#D99000" stroke="#FFFFFF" stroke-width="2"/></g><g transform="translate(296 208)"><circle cx="10" cy="10" r="9" fill="#2F9E68" stroke="#FFFFFF" stroke-width="2"/></g>
+    <g fill="#71717A" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" text-anchor="middle"><text x="87" y="282">中文</text><text x="173" y="282">输入法英文</text><text x="247" y="282">ENG</text><text x="306" y="282">CAPS</text></g>
+    <rect x="26" y="307" width="330" height="1" fill="#E4E4E7"/><text x="26" y="332" fill="#A1A1AA" font-family="Segoe UI, sans-serif" font-size="12" letter-spacing=".6">CARET-AWARE · QUIET BY DEFAULT</text>
+  </g>
+</svg>

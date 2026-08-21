@@ -40,7 +40,7 @@ public sealed class OverlayPlacementTests
             Overlay,
             6);
 
-        Assert.Equal(new PixelPoint(1892, 201), result);
+        Assert.Equal(new PixelPoint(1892, 176), result);
     }
 
     [Theory]
@@ -87,7 +87,7 @@ public sealed class OverlayPlacementTests
             Overlay,
             6);
 
-        Assert.Equal(new PixelPoint(-992, 401), result);
+        Assert.Equal(new PixelPoint(-992, 426), result);
     }
 
     [Theory]

@@ -55,6 +55,7 @@ internal sealed class NativeFocusEventHook : IDisposable
     {
         nint foregroundHook = 0;
         nint focusHook = 0;
+        nint locationHook = 0;
         try
         {
             _threadId = NativeMethods.GetCurrentThreadId();
@@ -66,6 +67,7 @@ internal sealed class NativeFocusEventHook : IDisposable
                 NativeMethods.PeekMessageNoRemove);
             foregroundHook = Subscribe(NativeMethods.EventSystemForeground);
             focusHook = Subscribe(NativeMethods.EventObjectFocus);
+            locationHook = Subscribe(NativeMethods.EventObjectLocationChange);
             _ready.Set();
 
             while (NativeMethods.GetMessage(out var message, 0, 0, 0) > 0)
@@ -76,6 +78,11 @@ internal sealed class NativeFocusEventHook : IDisposable
         }
         finally
         {
+            if (locationHook != 0)
+            {
+                _ = NativeMethods.UnhookWinEvent(locationHook);
+            }
+
             if (focusHook != 0)
             {
                 _ = NativeMethods.UnhookWinEvent(focusHook);
@@ -108,9 +115,19 @@ internal sealed class NativeFocusEventHook : IDisposable
         uint eventThreadId,
         uint eventTimeMilliseconds)
     {
-        if (!_disposed)
+        if (_disposed)
         {
-            _signal();
+            return;
         }
+
+        if (eventType == NativeMethods.EventObjectLocationChange &&
+            (objectId != NativeMethods.ObjectIdWindow ||
+                window == 0 ||
+                window != NativeMethods.GetForegroundWindow()))
+        {
+            return;
+        }
+
+        _signal();
     }
 }

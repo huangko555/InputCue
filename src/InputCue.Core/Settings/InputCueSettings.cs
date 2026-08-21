@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 namespace InputCue.Core.Settings;
 
 public sealed record InputCueSettings(
-    [property: JsonRequired] bool IndicatorEnabled,
     [property: JsonRequired] int DisplayDurationMilliseconds,
     [property: JsonRequired] int MinimumDisplayDurationMilliseconds,
     IndicatorPlacement Placement = IndicatorPlacement.BottomRight,
@@ -18,7 +17,9 @@ public sealed record InputCueSettings(
     string CapsLockDotColor = "2F9E68",
     IndicatorAppearanceSettings? DotAppearance = null,
     IndicatorAppearanceSettings? LightBadgeAppearance = null,
-    IndicatorAppearanceSettings? ShadowBadgeAppearance = null)
+    IndicatorAppearanceSettings? ShadowBadgeAppearance = null,
+    bool LessDisplay = true,
+    bool FullScreenAutoPause = true)
 {
     public const IndicatorPlacement DefaultPlacement = IndicatorPlacement.BottomRight;
     public const int MinimumOffsetDip = -40;
@@ -35,7 +36,6 @@ public sealed record InputCueSettings(
     public const string DefaultCapsLockDotColor = "2F9E68";
 
     public static InputCueSettings Default { get; } = new(
-        IndicatorEnabled: true,
         DisplayDurationMilliseconds: 1000,
         MinimumDisplayDurationMilliseconds: 300,
         Style: IndicatorStyle.LightBadge);

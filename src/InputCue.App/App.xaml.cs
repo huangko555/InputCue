@@ -1,9 +1,12 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Reflection;
 using System.Windows;
 using InputCue.App.Diagnostics;
 using InputCue.Core.Settings;
+using InputCue.Update;
 using InputCue.Windows.SingleInstance;
 using InputCue.Windows.Startup;
 using Forms = System.Windows.Forms;
@@ -17,8 +20,16 @@ namespace InputCue.App;
 public partial class App : System.Windows.Application
 {
     private const string UiInstanceName = "InputCue.UI.v1";
+    private const string GitHubUrl = "https://github.com/huangko555/InputCue";
+    private static readonly Uri UpdateManifestUri = new(
+        GitHubUrl + "/releases/latest/download/portable-releases.json");
+    private static readonly Uri UpdateSignatureUri = new(
+        GitHubUrl + "/releases/latest/download/portable-releases.json.sig");
     private SingleInstanceCoordinator? _singleInstance;
+    private PortableUpdateManager? _updateManager;
+    private CancellationTokenSource? _updateCancellation;
     private Forms.NotifyIcon? _trayIcon;
+    private System.Drawing.Icon? _applicationIcon;
     private Forms.ContextMenuStrip? _trayMenu;
     private Forms.ToolStripMenuItem? _pauseMenuItem;
     private bool _isExiting;
@@ -80,18 +91,33 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        var settingsPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "InputCue",
-            "settings.json");
+        var baseDirectory = Path.GetFullPath(AppContext.BaseDirectory);
+        var isPortable = File.Exists(Path.Combine(
+            baseDirectory,
+            PortableUpdateManager.PortableMarkerFileName));
+        var dataDirectory = isPortable
+            ? Path.Combine(baseDirectory, "data")
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "InputCue");
+        var settingsPath = Path.Combine(dataDirectory, "settings.json");
         var settingsStore = new InputCueSettingsStore(settingsPath);
         var executablePath = Environment.ProcessPath;
+        _updateCancellation = new CancellationTokenSource();
+        _updateManager = new PortableUpdateManager(
+            baseDirectory,
+            dataDirectory,
+            Assembly.GetEntryAssembly()?.GetName().Version ?? new Version(0, 0, 0),
+            UpdateManifestUri,
+            UpdateSignatureUri);
         var mainWindow = new MainWindow(
             settingsStore.Load(),
             settingsStore.TrySave,
             StartupRegistration.IsEnabled(),
             enabled => executablePath is not null &&
-                StartupRegistration.TrySetEnabled(enabled, executablePath));
+                StartupRegistration.TrySetEnabled(enabled, executablePath),
+            () => CheckAndApplyUpdateAsync(manual: true),
+            OpenGitHub);
         MainWindow = mainWindow;
         mainWindow.Closing += OnMainWindowClosing;
         mainWindow.WatchingStateChanged += OnWatchingStateChanged;
@@ -102,6 +128,8 @@ public partial class App : System.Windows.Application
         {
             mainWindow.Show();
         }
+
+        _ = RunAutomaticUpdateScheduleAsync(_updateCancellation.Token);
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -119,11 +147,19 @@ public partial class App : System.Windows.Application
             _trayIcon = null;
         }
 
+        _applicationIcon?.Dispose();
+        _applicationIcon = null;
+
         _trayMenu?.Dispose();
         _trayMenu = null;
         _pauseMenuItem = null;
         _singleInstance?.Dispose();
         _singleInstance = null;
+        _updateCancellation?.Cancel();
+        _updateCancellation?.Dispose();
+        _updateCancellation = null;
+        _updateManager?.Dispose();
+        _updateManager = null;
         base.OnExit(e);
     }
 
@@ -145,10 +181,13 @@ public partial class App : System.Windows.Application
         _trayMenu.Items.Add(new Forms.ToolStripSeparator());
         _trayMenu.Items.Add(exitItem);
 
+        _applicationIcon = Environment.ProcessPath is { } processPath
+            ? System.Drawing.Icon.ExtractAssociatedIcon(processPath)
+            : null;
         _trayIcon = new Forms.NotifyIcon
         {
             ContextMenuStrip = _trayMenu,
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = _applicationIcon ?? System.Drawing.SystemIcons.Application,
             Visible = true,
         };
         _trayIcon.DoubleClick += (_, _) => OpenMainWindow();
@@ -186,6 +225,8 @@ public partial class App : System.Windows.Application
             ? "InputCue - 已暂停"
             : window.IsRecovering
                 ? "InputCue - 正在恢复"
+                : window.IsFullScreenAutoPaused
+                    ? "InputCue - 全屏暂停"
                 : "InputCue - 正在运行";
     }
 
@@ -214,6 +255,81 @@ public partial class App : System.Windows.Application
         _isExiting = true;
         MainWindow?.Close();
         Shutdown(0);
+    }
+
+    private async Task RunAutomaticUpdateScheduleAsync(CancellationToken cancellationToken)
+    {
+        if (_updateManager is null)
+        {
+            return;
+        }
+
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var result = await CheckAndApplyUpdateAsync(manual: false).ConfigureAwait(true);
+                if (result.Status == PortableUpdateStatus.Unsupported || _isExiting)
+                {
+                    return;
+                }
+
+                var delay = _updateManager.GetAutomaticCheckDelay(DateTimeOffset.UtcNow);
+                if (delay <= TimeSpan.Zero)
+                {
+                    delay = PortableUpdateManager.AutomaticCheckInterval;
+                }
+
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(true);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task<PortableUpdateResult> CheckAndApplyUpdateAsync(bool manual)
+    {
+        if (_updateManager is null || _updateCancellation is null)
+        {
+            return new PortableUpdateResult(
+                PortableUpdateStatus.Unsupported,
+                "自动更新尚未初始化。");
+        }
+
+        var result = await _updateManager.CheckAsync(manual, _updateCancellation.Token)
+            .ConfigureAwait(true);
+        if (result.Status != PortableUpdateStatus.UpdateReady)
+        {
+            return result;
+        }
+
+        var executablePath = Environment.ProcessPath;
+        if (executablePath is null ||
+            !_updateManager.TryLaunchUpdater(result, Environment.ProcessId, executablePath))
+        {
+            return result with
+            {
+                Status = PortableUpdateStatus.Failed,
+                Message = "新版已下载，但更新器无法启动。",
+            };
+        }
+
+        _isExiting = true;
+        _ = Dispatcher.BeginInvoke(() => Shutdown(0));
+        return result;
+    }
+
+    private static void OpenGitHub()
+    {
+        try
+        {
+            _ = Process.Start(new ProcessStartInfo(GitHubUrl) { UseShellExecute = true });
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+        }
     }
 
     private static string? ReadOption(string[] arguments, string option)
