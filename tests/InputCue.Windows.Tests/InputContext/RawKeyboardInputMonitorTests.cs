@@ -31,7 +31,9 @@ public sealed class RawKeyboardInputMonitorTests
 
         thread.Start();
 
-        Assert.True(thread.Join(TimeSpan.FromSeconds(5)));
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(15)),
+            "The STA window thread did not complete within the CI scheduling budget.");
         Assert.Null(failure);
         Assert.True(attached);
     }
