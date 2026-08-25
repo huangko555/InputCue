@@ -55,6 +55,7 @@ public partial class MainWindow : Window, IDisposable
     private bool _isFullScreenAutoPaused;
     private bool _isRecovering;
     private bool _settingsInitialized;
+    private bool _updatingAppearanceControls;
     private bool _startupSettingInitialized;
     private bool _started;
     private int _displayDurationMilliseconds;
@@ -410,44 +411,62 @@ public partial class MainWindow : Window, IDisposable
             }
 
             _editingStyle = GetSelectedStyle();
-            LoadAppearance(_editingStyle);
+            _updatingAppearanceControls = true;
+            try
+            {
+                LoadAppearance(_editingStyle);
+            }
+            finally
+            {
+                _updatingAppearanceControls = false;
+            }
+
             UpdateStylePanels();
-            UpdatePlacementPreview();
+            ApplyAndPersistAppearancePreview();
         }
     }
 
     private void OnPlacementPreviewChanged(object sender, RoutedEventArgs e)
     {
-        if (_settingsInitialized)
+        if (_settingsInitialized && !_updatingAppearanceControls)
         {
-            UpdatePlacementPreview();
+            ApplyAndPersistAppearancePreview();
         }
     }
 
     private void OnResetPlacementClick(object sender, RoutedEventArgs e)
     {
         var style = GetSelectedStyle();
-        SetPlacementSelection(InputCueSettings.DefaultPlacement);
-        var sizeText = (style == IndicatorStyle.Dot
-                ? InputCueSettings.DefaultIndicatorSizeDip
-                : InputCueSettings.DefaultLightBadgeSizeDip)
-            .ToString(CultureInfo.InvariantCulture);
-        if (style == IndicatorStyle.Dot)
+        _updatingAppearanceControls = true;
+        try
         {
-            DotSizeTextBox.Text = sizeText;
+            SetPlacementSelection(InputCueSettings.DefaultPlacement);
+            var sizeText = (style == IndicatorStyle.Dot
+                    ? InputCueSettings.DefaultIndicatorSizeDip
+                    : InputCueSettings.DefaultLightBadgeSizeDip)
+                .ToString(CultureInfo.InvariantCulture);
+            if (style == IndicatorStyle.Dot)
+            {
+                DotSizeTextBox.Text = sizeText;
+            }
+            else
+            {
+                BadgeSizeTextBox.Text = sizeText;
+            }
+
+            HorizontalOffsetTextBox.Text = "0";
+            VerticalOffsetTextBox.Text = "0";
+            ChineseDotColorTextBox.Text = InputCueSettings.DefaultChineseDotColor;
+            EnglishDotColorTextBox.Text = InputCueSettings.DefaultEnglishDotColor;
+            EnglishUsDotColorTextBox.Text = InputCueSettings.DefaultEnglishUsDotColor;
+            CapsLockDotColorTextBox.Text = InputCueSettings.DefaultCapsLockDotColor;
         }
-        else
+        finally
         {
-            BadgeSizeTextBox.Text = sizeText;
+            _updatingAppearanceControls = false;
         }
 
-        HorizontalOffsetTextBox.Text = "0";
-        VerticalOffsetTextBox.Text = "0";
-        ChineseDotColorTextBox.Text = InputCueSettings.DefaultChineseDotColor;
-        EnglishDotColorTextBox.Text = InputCueSettings.DefaultEnglishDotColor;
-        EnglishUsDotColorTextBox.Text = InputCueSettings.DefaultEnglishUsDotColor;
-        CapsLockDotColorTextBox.Text = InputCueSettings.DefaultCapsLockDotColor;
-        UpdatePlacementPreview();
+        ApplyAndPersistAppearancePreview();
     }
 
     private void OnHexColorPreviewTextInput(object sender, TextCompositionEventArgs e)
@@ -473,9 +492,10 @@ public partial class MainWindow : Window, IDisposable
     private void OnDotColorChanged(object sender, TextChangedEventArgs e)
     {
         UpdateDotColorSwatches();
-        if (_settingsInitialized && TryReadDotColors(out _, out _, out _, out _))
+        if (_settingsInitialized && !_updatingAppearanceControls &&
+            TryReadDotColors(out _, out _, out _, out _))
         {
-            UpdatePlacementPreview();
+            ApplyAndPersistAppearancePreview();
         }
     }
 
@@ -985,6 +1005,34 @@ public partial class MainWindow : Window, IDisposable
             verticalOffsetDip,
             sizeDip);
         return true;
+    }
+
+    private void ApplyAndPersistAppearancePreview()
+    {
+        var style = GetSelectedStyle();
+        if (!TryReadAppearance(style, out var appearance) ||
+            !TryReadDotColors(
+                out var chineseDotColor,
+                out var englishDotColor,
+                out var englishUsDotColor,
+                out var capsLockDotColor))
+        {
+            UpdatePlacementPreview();
+            return;
+        }
+
+        _style = style;
+        _editingStyle = style;
+        SetAppearance(style, appearance);
+        _chineseDotColor = chineseDotColor;
+        _englishDotColor = englishDotColor;
+        _englishUsDotColor = englishUsDotColor;
+        _capsLockDotColor = capsLockDotColor;
+        UpdatePlacementPreview();
+        if (!PersistSettings())
+        {
+            StatusText.Text = "外观已应用，但未能保存。";
+        }
     }
 
     private static bool TryReadBoundedInteger(
