@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using InputCue.Core.Indicator;
 
 namespace InputCue.Core.Settings;
 
@@ -18,7 +19,8 @@ public sealed record InputCueSettings(
     IndicatorAppearanceSettings? DotAppearance = null,
     IndicatorAppearanceSettings? LightBadgeAppearance = null,
     IndicatorAppearanceSettings? ShadowBadgeAppearance = null,
-    bool LessDisplay = true,
+    AppStayPromptMode SameAppPromptMode = AppStayPromptMode.AfterDelay,
+    int SameAppPromptDelaySeconds = 300,
     bool FullScreenAutoPause = true)
 {
     public const IndicatorPlacement DefaultPlacement = IndicatorPlacement.BottomRight;
@@ -34,6 +36,9 @@ public sealed record InputCueSettings(
     public const string DefaultEnglishDotColor = "2F7FD6";
     public const string DefaultEnglishUsDotColor = "D99000";
     public const string DefaultCapsLockDotColor = "2F9E68";
+    public const int DefaultSameAppPromptDelaySeconds = 300;
+    public const int MinimumSameAppPromptDelaySeconds = 10;
+    public const int MaximumSameAppPromptDelaySeconds = 3600;
 
     public static InputCueSettings Default { get; } = new(
         DisplayDurationMilliseconds: 1000,
@@ -56,7 +61,10 @@ public sealed record InputCueSettings(
         IsHexColor(CapsLockDotColor) &&
         IsValidAppearance(DotAppearance, IndicatorStyle.Dot) &&
         IsValidAppearance(LightBadgeAppearance, IndicatorStyle.LightBadge) &&
-        IsValidAppearance(ShadowBadgeAppearance, IndicatorStyle.ShadowBadge);
+        IsValidAppearance(ShadowBadgeAppearance, IndicatorStyle.ShadowBadge) &&
+        Enum.IsDefined(SameAppPromptMode) &&
+        SameAppPromptDelaySeconds is >= MinimumSameAppPromptDelaySeconds
+            and <= MaximumSameAppPromptDelaySeconds;
 
     public IndicatorAppearanceSettings GetAppearance(IndicatorStyle style) => style switch
     {

@@ -50,7 +50,8 @@ public partial class MainWindow : Window, IDisposable
     private CancellationTokenSource? _watchCancellation;
     private bool _capsLockEnabled;
     private bool _disposed;
-    private bool _lessDisplay;
+    private AppStayPromptMode _sameAppPromptMode;
+    private int _sameAppPromptDelaySeconds;
     private bool _fullScreenAutoPause;
     private bool _isFullScreenAutoPaused;
     private bool _isRecovering;
@@ -99,7 +100,8 @@ public partial class MainWindow : Window, IDisposable
         _openGitHub = openGitHub;
         InitializeComponent();
         VersionText.Text = FormatVersion(typeof(MainWindow).Assembly.GetName().Version);
-        _lessDisplay = settings.LessDisplay;
+        _sameAppPromptMode = settings.SameAppPromptMode;
+        _sameAppPromptDelaySeconds = settings.SameAppPromptDelaySeconds;
         _fullScreenAutoPause = settings.FullScreenAutoPause;
         _displayDurationMilliseconds = settings.DisplayDurationMilliseconds;
         _minimumDisplayDurationMilliseconds = settings.MinimumDisplayDurationMilliseconds;
@@ -115,6 +117,8 @@ public partial class MainWindow : Window, IDisposable
         DisplayDurationTextBox.Text = _displayDurationMilliseconds.ToString(CultureInfo.InvariantCulture);
         MinimumDisplayDurationTextBox.Text =
             _minimumDisplayDurationMilliseconds.ToString(CultureInfo.InvariantCulture);
+        SameAppPromptDelayTextBox.Text =
+            _sameAppPromptDelaySeconds.ToString(CultureInfo.InvariantCulture);
         ChineseDotColorTextBox.Text = _chineseDotColor;
         EnglishDotColorTextBox.Text = _englishDotColor;
         EnglishUsDotColorTextBox.Text = _englishUsDotColor;
@@ -138,7 +142,7 @@ public partial class MainWindow : Window, IDisposable
         _keyboardInputMonitor.EditingKeyPressed += OnEditingKeyPressed;
         _keyboardInputMonitor.PointerClickObserved += OnPointerClickObserved;
         _keyboardInputMonitor.PointerAnchorInvalidated += OnPointerAnchorInvalidated;
-        LessDisplayCheckBox.IsChecked = _lessDisplay;
+        SetSameAppPromptSelection(_sameAppPromptMode);
         FullScreenAutoPauseCheckBox.IsChecked = _fullScreenAutoPause;
         StartWithWindowsCheckBox.IsChecked = startWithWindows;
         _settingsInitialized = true;
@@ -312,21 +316,74 @@ public partial class MainWindow : Window, IDisposable
 
     private void OnGitHubClick(object sender, RoutedEventArgs e) => _openGitHub();
 
-    private void OnLessDisplayChanged(object sender, RoutedEventArgs e)
+    private void OnSameAppPromptModeChanged(object sender, RoutedEventArgs e)
     {
         if (!_settingsInitialized)
         {
             return;
         }
 
-        _lessDisplay = LessDisplayCheckBox.IsChecked is true;
+        _sameAppPromptMode = GetSelectedSameAppPromptMode();
         _appStayPromptPolicy.Reset();
         StatusText.Text = PersistSettings()
-            ? _lessDisplay
-                ? "已启用更少显示：同一应用停留期间仅提示一次。"
-                : "已关闭更少显示。"
-            : "更少显示设置未能保存。";
+            ? SameAppPromptModeStatusText(_sameAppPromptMode)
+            : "同应用提示设置未能保存。";
     }
+
+    private void OnSameAppPromptDelayTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_settingsInitialized ||
+            !int.TryParse(
+                SameAppPromptDelayTextBox.Text,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var delaySeconds))
+        {
+            return;
+        }
+
+        if (delaySeconds > InputCueSettings.MaximumSameAppPromptDelaySeconds)
+        {
+            SameAppPromptDelayTextBox.Text =
+                InputCueSettings.MaximumSameAppPromptDelaySeconds.ToString(CultureInfo.InvariantCulture);
+            SameAppPromptDelayTextBox.CaretIndex = SameAppPromptDelayTextBox.Text.Length;
+            delaySeconds = InputCueSettings.MaximumSameAppPromptDelaySeconds;
+        }
+
+        if (delaySeconds < InputCueSettings.MinimumSameAppPromptDelaySeconds ||
+            delaySeconds == _sameAppPromptDelaySeconds)
+        {
+            return;
+        }
+
+        _sameAppPromptDelaySeconds = delaySeconds;
+        if (!PersistSettings())
+        {
+            StatusText.Text = "同应用提示延时未能保存。";
+        }
+    }
+
+    private AppStayPromptMode GetSelectedSameAppPromptMode() =>
+        SameAppPromptAlwaysRadio.IsChecked is true
+            ? AppStayPromptMode.Always
+            : SameAppPromptDelayRadio.IsChecked is true
+                ? AppStayPromptMode.AfterDelay
+                : AppStayPromptMode.Never;
+
+    private void SetSameAppPromptSelection(AppStayPromptMode mode)
+    {
+        SameAppPromptAlwaysRadio.IsChecked = mode == AppStayPromptMode.Always;
+        SameAppPromptDelayRadio.IsChecked = mode == AppStayPromptMode.AfterDelay;
+        SameAppPromptNeverRadio.IsChecked = mode == AppStayPromptMode.Never;
+    }
+
+    private string SameAppPromptModeStatusText(AppStayPromptMode mode) => mode switch
+    {
+        AppStayPromptMode.Always => "同应用内切换输入框时始终显示提示。",
+        AppStayPromptMode.AfterDelay =>
+            $"同应用内切换输入框时，{_sameAppPromptDelaySeconds} 秒后重新显示提示。",
+        _ => "同应用内切换输入框时不再显示提示。",
+    };
 
     private void OnWindowActivated(object? sender, EventArgs e)
     {
@@ -797,9 +854,12 @@ public partial class MainWindow : Window, IDisposable
         }
 
         var suppressContextReplay = diagnostic.SuppressContextReplay ||
-            _lessDisplay && _appStayPromptPolicy.ShouldSuppressContextReplay(
+            _appStayPromptPolicy.ShouldSuppressContextReplay(
+                _sameAppPromptMode,
+                TimeSpan.FromSeconds(_sameAppPromptDelaySeconds),
                 diagnostic.Target,
-                diagnostic.Snapshot);
+                diagnostic.Snapshot,
+                DateTimeOffset.UtcNow);
         var indicatorState = _indicatorSession.Observe(
             diagnostic.Snapshot,
             DateTimeOffset.UtcNow,
@@ -1386,7 +1446,8 @@ public partial class MainWindow : Window, IDisposable
             _dotAppearance,
             _lightBadgeAppearance,
             _shadowBadgeAppearance,
-            _lessDisplay,
+            _sameAppPromptMode,
+            _sameAppPromptDelaySeconds,
             _fullScreenAutoPause));
     }
 

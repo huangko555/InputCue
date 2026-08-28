@@ -119,7 +119,12 @@ public sealed class PointerAnchorFallbackPolicyTests
         var click = Click(observedAt: Now + TimeSpan.FromMilliseconds(50));
         var session = new IndicatorSession();
         var appStayPolicy = new AppStayPromptPolicy();
-        _ = appStayPolicy.ShouldSuppressContextReplay(rawDiagnostic.Target, rawDiagnostic.Snapshot);
+        _ = appStayPolicy.ShouldSuppressContextReplay(
+            AppStayPromptMode.Never,
+            TimeSpan.Zero,
+            rawDiagnostic.Target,
+            rawDiagnostic.Snapshot,
+            Now);
         var hidden = session.Observe(rawDiagnostic.Snapshot, receivedAt: Now);
 
         var effectiveDiagnostic = PointerAnchorFallbackPolicy.Apply(
@@ -128,8 +133,11 @@ public sealed class PointerAnchorFallbackPolicyTests
             Now + TimeSpan.FromMilliseconds(50),
             currentForegroundWindow: 10);
         var suppress = appStayPolicy.ShouldSuppressContextReplay(
+            AppStayPromptMode.Never,
+            TimeSpan.Zero,
             effectiveDiagnostic.Target,
-            effectiveDiagnostic.Snapshot);
+            effectiveDiagnostic.Snapshot,
+            Now + TimeSpan.FromMilliseconds(50));
         var visible = session.Observe(
             effectiveDiagnostic.Snapshot,
             receivedAt: Now + TimeSpan.FromMilliseconds(50),

@@ -1,4 +1,5 @@
 using System.Text;
+using InputCue.Core.Indicator;
 using InputCue.Core.Settings;
 
 namespace InputCue.Core.Tests.Settings;
@@ -33,7 +34,8 @@ public sealed class InputCueSettingsStoreTests
             IndicatorSizeDip: 18,
             Style: IndicatorStyle.LightBadge,
             LightBadgeSizeDip: 44,
-            LessDisplay: true,
+            SameAppPromptMode: AppStayPromptMode.AfterDelay,
+            SameAppPromptDelaySeconds: 120,
             FullScreenAutoPause: true,
             DotAppearance: new(IndicatorPlacement.TopLeft, -4, 6, 15),
             LightBadgeAppearance: new(IndicatorPlacement.Right, 8, -3, 42),
@@ -74,8 +76,81 @@ public sealed class InputCueSettingsStoreTests
         Assert.Equal(InputCueSettings.DefaultIndicatorSizeDip, settings.IndicatorSizeDip);
         Assert.Equal(IndicatorStyle.Dot, settings.Style);
         Assert.Equal(InputCueSettings.DefaultLightBadgeSizeDip, settings.LightBadgeSizeDip);
-        Assert.True(settings.LessDisplay);
+        Assert.Equal(AppStayPromptMode.AfterDelay, settings.SameAppPromptMode);
+        Assert.Equal(
+            InputCueSettings.DefaultSameAppPromptDelaySeconds,
+            settings.SameAppPromptDelaySeconds);
         Assert.True(settings.FullScreenAutoPause);
+    }
+
+    [Theory]
+    [InlineData(true, AppStayPromptMode.Never)]
+    [InlineData(false, AppStayPromptMode.Always)]
+    public void LegacyLessDisplayPreferenceMapsToPromptMode(
+        bool legacyLessDisplay,
+        AppStayPromptMode expectedMode)
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        File.WriteAllText(
+            path,
+            $$"""
+            {
+              "DisplayDurationMilliseconds": 900,
+              "MinimumDisplayDurationMilliseconds": 250,
+              "LessDisplay": {{(legacyLessDisplay ? "true" : "false")}}
+            }
+            """,
+            Encoding.UTF8);
+        var store = new InputCueSettingsStore(path);
+
+        var settings = store.Load();
+
+        Assert.Equal(900, settings.DisplayDurationMilliseconds);
+        Assert.Equal(expectedMode, settings.SameAppPromptMode);
+    }
+
+    [Fact]
+    public void LegacyLessDisplayKeyIsIgnoredWhenPromptModeIsExplicit()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        File.WriteAllText(
+            path,
+            """
+            {
+              "DisplayDurationMilliseconds": 900,
+              "MinimumDisplayDurationMilliseconds": 250,
+              "LessDisplay": true,
+              "SameAppPromptMode": 1,
+              "SameAppPromptDelaySeconds": 45
+            }
+            """,
+            Encoding.UTF8);
+        var store = new InputCueSettingsStore(path);
+
+        var settings = store.Load();
+
+        Assert.Equal(AppStayPromptMode.AfterDelay, settings.SameAppPromptMode);
+        Assert.Equal(45, settings.SameAppPromptDelaySeconds);
+    }
+
+    [Theory]
+    [InlineData(9)]
+    [InlineData(3601)]
+    public void InvalidSameAppPromptDelayIsNotWritten(int delaySeconds)
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var store = new InputCueSettingsStore(path);
+
+        var saved = store.TrySave(new InputCueSettings(
+            1000,
+            300,
+            SameAppPromptDelaySeconds: delaySeconds));
+
+        Assert.False(saved);
+        Assert.False(File.Exists(path));
     }
 
     [Fact]

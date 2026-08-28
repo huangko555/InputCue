@@ -5,9 +5,9 @@
         Title="InputCue"
         Icon="/Assets/InputCue.ico"
         Width="820"
-        Height="900"
+        Height="940"
         MinWidth="820"
-        MinHeight="900"
+        MinHeight="940"
         Background="#FFF7F8FA"
         FontFamily="Segoe UI, Microsoft YaHei UI"
         FontSize="13"
@@ -229,6 +229,49 @@
                                 <Setter TargetName="SegmentBorder" Property="Background" Value="#FFFFFFFF" />
                                 <Setter Property="Foreground" Value="#FF18181B" />
                                 <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="OptionRadioStyle" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid Width="20" Height="20" VerticalAlignment="Center">
+                                <Ellipse x:Name="Ring"
+                                         Fill="#FFFFFFFF"
+                                         Stroke="#FFC9CACD"
+                                         StrokeThickness="1.5" />
+                                <Ellipse x:Name="CheckDot"
+                                         Width="10"
+                                         Height="10"
+                                         Fill="{StaticResource PrimaryBrush}"
+                                         Visibility="Collapsed" />
+                            </Grid>
+                            <ContentPresenter Grid.Column="1"
+                                              Margin="8,0,0,0"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Ring" Property="Stroke" Value="{StaticResource PrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Ring" Property="Stroke" Value="{StaticResource PrimaryBrush}" />
+                                <Setter TargetName="Ring" Property="StrokeThickness" Value="2" />
+                                <Setter TargetName="CheckDot" Property="Visibility" Value="Visible" />
+                                <Setter Property="Foreground" Value="#FF18181B" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -595,8 +638,6 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="20" />
                                 <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="20" />
-                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <CheckBox x:Name="StartWithWindowsCheckBox"
@@ -611,14 +652,49 @@
                                       Unchecked="OnFullScreenAutoPauseChanged"
                                       ToolTip="视频、游戏等进入全屏时暂停提示，退出全屏后自动恢复"
                                       Content="全屏自动暂停" />
-                            <CheckBox x:Name="LessDisplayCheckBox"
-                                      Grid.Column="4"
-                                      Style="{StaticResource ToggleSwitchStyle}"
-                                      Checked="OnLessDisplayChanged"
-                                      Unchecked="OnLessDisplayChanged"
-                                      ToolTip="同一应用未切出时仅提示一次，切换输入模式仍会提示"
-                                      Content="更少显示（开启后同应用不会反复提示）" />
                         </Grid>
+                        <StackPanel Margin="0,18,0,0" Orientation="Horizontal">
+                            <TextBlock VerticalAlignment="Center"
+                                       Foreground="{StaticResource MutedBrush}"
+                                       ToolTip="切换输入模式（中文、英文、大写锁定）时始终会立即提示"
+                                       Text="同应用内切换输入框时" />
+                            <RadioButton x:Name="SameAppPromptAlwaysRadio"
+                                         Style="{StaticResource OptionRadioStyle}"
+                                         Margin="20,0,0,0"
+                                         VerticalAlignment="Center"
+                                         GroupName="SameAppPromptMode"
+                                         Checked="OnSameAppPromptModeChanged"
+                                         ToolTip="每次切换输入框都提示"
+                                         Content="始终显示" />
+                            <RadioButton x:Name="SameAppPromptDelayRadio"
+                                         Style="{StaticResource OptionRadioStyle}"
+                                         Margin="20,0,0,0"
+                                         VerticalAlignment="Center"
+                                         GroupName="SameAppPromptMode"
+                                         Checked="OnSameAppPromptModeChanged"
+                                         ToolTip="距上次提示超过设定秒数后，切换输入框会重新提示">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBox x:Name="SameAppPromptDelayTextBox"
+                                             Width="90"
+                                             Margin="8,0,0,0"
+                                             VerticalAlignment="Center"
+                                             VerticalContentAlignment="Center"
+                                             TextAlignment="Center"
+                                             ToolTip="允许 10 到 3600 秒"
+                                             Text="300"
+                                             TextChanged="OnSameAppPromptDelayTextChanged" />
+                                    <TextBlock Margin="6,0,0,0" VerticalAlignment="Center" Text="秒后显示" />
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="SameAppPromptNeverRadio"
+                                         Style="{StaticResource OptionRadioStyle}"
+                                         Margin="20,0,0,0"
+                                         VerticalAlignment="Center"
+                                         GroupName="SameAppPromptMode"
+                                         Checked="OnSameAppPromptModeChanged"
+                                         ToolTip="同应用停留期间仅提示一次"
+                                         Content="始终不显示" />
+                        </StackPanel>
                         <Border Height="1" Margin="0,18,0,16" Background="#FFF0F0F1" />
                         <StackPanel HorizontalAlignment="Left" Orientation="Horizontal">
                             <StackPanel Width="160">

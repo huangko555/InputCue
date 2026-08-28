@@ -1,9 +1,14 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using InputCue.Core.Indicator;
 
 namespace InputCue.Core.Settings;
 
 public sealed class InputCueSettingsStore
 {
+    private const string LegacyLessDisplayKey = "LessDisplay";
+    private const string SameAppPromptModeKey = nameof(InputCueSettings.SameAppPromptMode);
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -27,7 +32,7 @@ public sealed class InputCueSettingsStore
             }
 
             using var stream = File.OpenRead(_filePath);
-            var settings = JsonSerializer.Deserialize<InputCueSettings>(stream, JsonOptions);
+            var settings = DeserializeWithMigration(stream);
             return settings is { IsValid: true } ? settings : InputCueSettings.Default;
         }
         catch (Exception exception) when (
@@ -75,6 +80,28 @@ public sealed class InputCueSettingsStore
         {
             TryDeleteTemporaryFile(temporaryPath);
         }
+    }
+
+    /// <summary>
+    /// Maps the legacy boolean <c>LessDisplay</c> key onto <see cref="InputCueSettings.SameAppPromptMode"/>
+    /// when the file predates the three-mode setting. New-version files keep their explicit mode.
+    /// </summary>
+    private static InputCueSettings? DeserializeWithMigration(Stream stream)
+    {
+        var node = JsonNode.Parse(stream);
+        if (node is JsonObject jsonObject &&
+            jsonObject.ContainsKey(LegacyLessDisplayKey) &&
+            !jsonObject.ContainsKey(SameAppPromptModeKey))
+        {
+            var suppressReplays =
+                jsonObject[LegacyLessDisplayKey]?.GetValueKind() is JsonValueKind.True;
+            jsonObject.Remove(LegacyLessDisplayKey);
+            jsonObject[SameAppPromptModeKey] = (int)(suppressReplays
+                ? AppStayPromptMode.Never
+                : AppStayPromptMode.Always);
+        }
+
+        return node?.Deserialize<InputCueSettings>(JsonOptions);
     }
 
     private static void TryDeleteTemporaryFile(string path)

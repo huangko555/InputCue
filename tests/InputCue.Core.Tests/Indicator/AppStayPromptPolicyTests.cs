@@ -12,18 +12,23 @@ public sealed class AppStayPromptPolicyTests
     {
         var policy = new AppStayPromptPolicy();
 
-        Assert.False(policy.ShouldSuppressContextReplay(Target("editor", 10), Snapshot(1)));
-        Assert.True(policy.ShouldSuppressContextReplay(Target("EDITOR", 11), Snapshot(2)));
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.Never, TimeSpan.Zero, Target("editor", 10), Snapshot(1), Now));
+        Assert.True(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.Never, TimeSpan.Zero, Target("EDITOR", 11), Snapshot(2), Now));
     }
 
     [Fact]
     public void SwitchingAwayAndBackStartsANewStay()
     {
         var policy = new AppStayPromptPolicy();
-        _ = policy.ShouldSuppressContextReplay(Target("editor", 10), Snapshot(1));
+        _ = policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.Never, TimeSpan.Zero, Target("editor", 10), Snapshot(1), Now);
 
-        Assert.False(policy.ShouldSuppressContextReplay(Target("browser", 20), Snapshot(2)));
-        Assert.False(policy.ShouldSuppressContextReplay(Target("editor", 10), Snapshot(3)));
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.Never, TimeSpan.Zero, Target("browser", 20), Snapshot(2), Now));
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.Never, TimeSpan.Zero, Target("editor", 10), Snapshot(3), Now));
     }
 
     [Fact]
@@ -32,20 +37,164 @@ public sealed class AppStayPromptPolicyTests
         var policy = new AppStayPromptPolicy();
 
         Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.Never,
+            TimeSpan.Zero,
             Target("editor", 10),
-            Snapshot(1, Eligibility.PositionUnknown, anchor: null)));
-        Assert.False(policy.ShouldSuppressContextReplay(Target("editor", 10), Snapshot(2)));
+            Snapshot(1, Eligibility.PositionUnknown, anchor: null),
+            Now));
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.Never, TimeSpan.Zero, Target("editor", 10), Snapshot(2), Now));
     }
 
     [Fact]
     public void ResetStartsANewStayWithoutPolling()
     {
         var policy = new AppStayPromptPolicy();
-        _ = policy.ShouldSuppressContextReplay(Target("editor", 10), Snapshot(1));
+        _ = policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.Never, TimeSpan.Zero, Target("editor", 10), Snapshot(1), Now);
 
         policy.Reset();
 
-        Assert.False(policy.ShouldSuppressContextReplay(Target("editor", 10), Snapshot(2)));
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.Never, TimeSpan.Zero, Target("editor", 10), Snapshot(2), Now));
+    }
+
+    [Fact]
+    public void AlwaysModeNeverSuppressesReplays()
+    {
+        var policy = new AppStayPromptPolicy();
+
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.Always, TimeSpan.Zero, Target("editor", 10), Snapshot(1), Now));
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.Always, TimeSpan.Zero, Target("editor", 10), Snapshot(2), Now));
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.Always, TimeSpan.Zero, Target("editor", 10), Snapshot(3), Now));
+    }
+
+    [Fact]
+    public void AfterDelaySuppressesUntilDelayElapsedSinceLastPrompt()
+    {
+        var policy = new AppStayPromptPolicy();
+
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(300),
+            Target("editor", 10),
+            Snapshot(1),
+            Now));
+        Assert.True(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(300),
+            Target("editor", 10),
+            Snapshot(2),
+            Now.AddSeconds(299)));
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(300),
+            Target("editor", 10),
+            Snapshot(3),
+            Now.AddSeconds(300)));
+    }
+
+    [Fact]
+    public void AfterDelayRestartsItsTimerWhenReplayIsAllowed()
+    {
+        var policy = new AppStayPromptPolicy();
+
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(300),
+            Target("editor", 10),
+            Snapshot(1),
+            Now));
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(300),
+            Target("editor", 10),
+            Snapshot(2),
+            Now.AddMinutes(31)));
+        Assert.True(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(300),
+            Target("editor", 10),
+            Snapshot(3),
+            Now.AddMinutes(35)));
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(300),
+            Target("editor", 10),
+            Snapshot(4),
+            Now.AddMinutes(40)));
+    }
+
+    [Fact]
+    public void AfterDelayStartsANewStayWhenApplicationChanges()
+    {
+        var policy = new AppStayPromptPolicy();
+        _ = policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(300),
+            Target("editor", 10),
+            Snapshot(1),
+            Now);
+        _ = policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(300),
+            Target("browser", 20),
+            Snapshot(2),
+            Now.AddMinutes(1));
+
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(300),
+            Target("editor", 10),
+            Snapshot(3),
+            Now.AddMinutes(2)));
+        Assert.True(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(300),
+            Target("editor", 10),
+            Snapshot(4),
+            Now.AddMinutes(2).AddSeconds(30)));
+    }
+
+    [Fact]
+    public void AfterDelayIgnoresIneligibleObservationsForItsTimer()
+    {
+        var policy = new AppStayPromptPolicy();
+        _ = policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(300),
+            Target("editor", 10),
+            Snapshot(1),
+            Now);
+
+        Assert.False(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(300),
+            Target("editor", 10),
+            Snapshot(2, Eligibility.PositionUnknown, anchor: null),
+            Now.AddSeconds(150)));
+        Assert.True(policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(300),
+            Target("editor", 10),
+            Snapshot(3),
+            Now.AddSeconds(200)));
+    }
+
+    [Fact]
+    public void NegativeDelayIsRejected()
+    {
+        var policy = new AppStayPromptPolicy();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => policy.ShouldSuppressContextReplay(
+            AppStayPromptMode.AfterDelay,
+            TimeSpan.FromSeconds(-1),
+            Target("editor", 10),
+            Snapshot(1),
+            Now));
     }
 
     private static TargetDescriptor Target(string processName, int processId) =>
