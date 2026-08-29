@@ -39,6 +39,19 @@ public sealed class IndicatorOverlayPresenter : IDisposable
             capsLockDotColor);
     }
 
+    public void UpdateCustomIcons(CustomIconImages images)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(images);
+        _window.UpdateCustomIcons(images);
+    }
+
+    public void UpdateCustomShadow(CustomIconShadowMode mode)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _window.UpdateCustomShadow(mode);
+    }
+
     public void Update(IndicatorViewState state)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

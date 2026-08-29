@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using InputCue.Core.Indicator;
 using InputCue.Core.InputContext;
@@ -39,6 +40,9 @@ public partial class MainWindow : Window, IDisposable
     private readonly AppStayPromptPolicy _appStayPromptPolicy = new();
     private readonly DispatcherTimer _indicatorTimer;
     private readonly DispatcherTimer _updateToastTimer;
+    private readonly DispatcherTimer _updateEllipsisTimer;
+    private string _updateEllipsisBaseText = string.Empty;
+    private int _updateEllipsisStep;
     private readonly RawKeyboardInputMonitor _keyboardInputMonitor = new();
     private readonly Func<InputCueSettings, bool> _saveSettings;
     private readonly Func<bool, bool> _setStartWithWindows;
@@ -66,6 +70,24 @@ public partial class MainWindow : Window, IDisposable
     private IndicatorAppearanceSettings _dotAppearance;
     private IndicatorAppearanceSettings _lightBadgeAppearance;
     private IndicatorAppearanceSettings _shadowBadgeAppearance;
+    private IndicatorAppearanceSettings _customAppearance;
+    private readonly string _customIconsDirectory;
+    private CustomIconCatalogResult _customIconCatalogResult = CustomIconCatalogResult.Empty;
+    private CustomIconImages _customIconImages = CustomIconImages.Empty;
+    private CustomIconShadowMode _customShadow = CustomIconShadowMode.None;
+    private string? _customIconMessage;
+    private bool _customIconMessageIsError;
+    private PreviewCell[] _previewCells = [];
+
+    private static readonly InputState[] PreviewCellStates =
+        [InputState.Chinese, InputState.English, InputState.EnglishUs, InputState.CapsLock];
+
+    private readonly record struct PreviewCell(
+        IndicatorPreviewControl Control,
+        System.Windows.Controls.Canvas IconCanvas,
+        System.Windows.Controls.Canvas BoxCanvas,
+        System.Windows.Controls.Border Box,
+        System.Windows.Shapes.Rectangle Caret);
     private long _diagnosticGenerationBaseline;
     private bool _previewAllowed;
     private string _chineseDotColor;
@@ -87,19 +109,29 @@ public partial class MainWindow : Window, IDisposable
         bool startWithWindows,
         Func<bool, bool> setStartWithWindows,
         Func<Task<PortableUpdateResult>> checkForUpdates,
-        Action openGitHub)
+        Action openGitHub,
+        string customIconsDirectory)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(saveSettings);
         ArgumentNullException.ThrowIfNull(setStartWithWindows);
         ArgumentNullException.ThrowIfNull(checkForUpdates);
         ArgumentNullException.ThrowIfNull(openGitHub);
+        ArgumentException.ThrowIfNullOrWhiteSpace(customIconsDirectory);
         _saveSettings = saveSettings;
         _setStartWithWindows = setStartWithWindows;
         _checkForUpdates = checkForUpdates;
         _openGitHub = openGitHub;
+        _customIconsDirectory = customIconsDirectory;
         InitializeComponent();
         VersionText.Text = FormatVersion(typeof(MainWindow).Assembly.GetName().Version);
+        _previewCells =
+        [
+            new(PreviewIndicatorChinese, PreviewIconCanvasChinese, PreviewCanvasChinese, PreviewBoxChinese, PreviewCaretChinese),
+            new(PreviewIndicatorEnglish, PreviewIconCanvasEnglish, PreviewCanvasEnglish, PreviewBoxEnglish, PreviewCaretEnglish),
+            new(PreviewIndicatorEnglishUs, PreviewIconCanvasEnglishUs, PreviewCanvasEnglishUs, PreviewBoxEnglishUs, PreviewCaretEnglishUs),
+            new(PreviewIndicatorCapsLock, PreviewIconCanvasCapsLock, PreviewCanvasCapsLock, PreviewBoxCapsLock, PreviewCaretCapsLock),
+        ];
         _sameAppPromptMode = settings.SameAppPromptMode;
         _sameAppPromptDelaySeconds = settings.SameAppPromptDelaySeconds;
         _fullScreenAutoPause = settings.FullScreenAutoPause;
@@ -110,6 +142,9 @@ public partial class MainWindow : Window, IDisposable
         _dotAppearance = settings.GetAppearance(IndicatorStyle.Dot);
         _lightBadgeAppearance = settings.GetAppearance(IndicatorStyle.LightBadge);
         _shadowBadgeAppearance = settings.GetAppearance(IndicatorStyle.ShadowBadge);
+        _customAppearance = settings.GetAppearance(IndicatorStyle.Custom);
+        _customShadow = settings.CustomIconShadow;
+        SetCustomShadowSelection(_customShadow);
         _chineseDotColor = settings.ChineseDotColor;
         _englishDotColor = settings.EnglishDotColor;
         _englishUsDotColor = settings.EnglishUsDotColor;
@@ -126,6 +161,7 @@ public partial class MainWindow : Window, IDisposable
         SetStyleSelection(_style);
         LoadAppearance(_editingStyle);
         UpdateStylePanels();
+        RefreshCustomIcons(forceRescan: true);
         ConfigureOverlay();
         UpdatePlacementPreview();
         _indicatorSession = CreateIndicatorSession(
@@ -139,6 +175,11 @@ public partial class MainWindow : Window, IDisposable
             Dispatcher);
         _updateToastTimer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher);
         _updateToastTimer.Tick += OnUpdateToastTimerTick;
+        _updateEllipsisTimer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(350),
+        };
+        _updateEllipsisTimer.Tick += OnUpdateEllipsisTimerTick;
         _keyboardInputMonitor.EditingKeyPressed += OnEditingKeyPressed;
         _keyboardInputMonitor.PointerClickObserved += OnPointerClickObserved;
         _keyboardInputMonitor.PointerAnchorInvalidated += OnPointerAnchorInvalidated;
@@ -175,6 +216,8 @@ public partial class MainWindow : Window, IDisposable
         _indicatorTimer.Stop();
         _updateToastTimer.Stop();
         _updateToastTimer.Tick -= OnUpdateToastTimerTick;
+        _updateEllipsisTimer.Stop();
+        _updateEllipsisTimer.Tick -= OnUpdateEllipsisTimerTick;
         _keyboardInputMonitor.EditingKeyPressed -= OnEditingKeyPressed;
         _keyboardInputMonitor.PointerClickObserved -= OnPointerClickObserved;
         _keyboardInputMonitor.PointerAnchorInvalidated -= OnPointerAnchorInvalidated;
@@ -250,27 +293,21 @@ public partial class MainWindow : Window, IDisposable
         ArgumentNullException.ThrowIfNull(notice);
         Dispatcher.VerifyAccess();
 
-        var (background, border, iconBackground, foreground, icon, iconForeground) =
+        var (background, border, foreground) =
             notice.Tone switch
             {
-                PortableUpdateNoticeTone.Information =>
-                    ("EFF6FF", "BFDBFE", "DCEEFF", "1E3A5F", "↻", "1683FF"),
-                PortableUpdateNoticeTone.Success =>
-                    ("F0FDF4", "BBF7D0", "DCFCE7", "14532D", "✓", "16A34A"),
-                PortableUpdateNoticeTone.Warning =>
-                    ("FFFBEB", "FDE68A", "FEF3C7", "78350F", "!", "D97706"),
-                PortableUpdateNoticeTone.Error =>
-                    ("FEF2F2", "FECACA", "FEE2E2", "7F1D1D", "×", "DC2626"),
+                PortableUpdateNoticeTone.Information => ("EFF6FF", "BFDBFE", "1E3A5F"),
+                PortableUpdateNoticeTone.Success => ("F0FDF4", "BBF7D0", "14532D"),
+                PortableUpdateNoticeTone.Warning => ("FFFBEB", "FDE68A", "78350F"),
+                PortableUpdateNoticeTone.Error => ("FEF2F2", "FECACA", "7F1D1D"),
                 _ => throw new ArgumentOutOfRangeException(nameof(notice), notice.Tone, null),
             };
 
         _updateToastTimer.Stop();
+        _updateEllipsisTimer.Stop();
         UpdateToast.Background = BrushFromHex(background);
         UpdateToast.BorderBrush = BrushFromHex(border);
-        UpdateToastIconBackground.Background = BrushFromHex(iconBackground);
         UpdateToastText.Foreground = BrushFromHex(foreground);
-        UpdateToastIcon.Foreground = BrushFromHex(iconForeground);
-        UpdateToastIcon.Text = icon;
         UpdateToastText.Text = notice.Message;
         UpdateToast.Visibility = Visibility.Visible;
         UpdateToast.BeginAnimation(
@@ -283,11 +320,26 @@ public partial class MainWindow : Window, IDisposable
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
             });
 
+        if (ReferenceEquals(notice, PortableUpdateNotice.Checking))
+        {
+            // Animate the trailing ellipsis so a slow check never reads as frozen.
+            _updateEllipsisBaseText = UpdateToastText.Text.TrimEnd('.', '…');
+            _updateEllipsisStep = 0;
+            UpdateToastText.Text = _updateEllipsisBaseText + ".";
+            _updateEllipsisTimer.Start();
+        }
+
         if (notice.Duration > TimeSpan.Zero)
         {
             _updateToastTimer.Interval = notice.Duration;
             _updateToastTimer.Start();
         }
+    }
+
+    private void OnUpdateEllipsisTimerTick(object? sender, EventArgs e)
+    {
+        _updateEllipsisStep = (_updateEllipsisStep + 1) % 3;
+        UpdateToastText.Text = _updateEllipsisBaseText + new string('.', _updateEllipsisStep + 1);
     }
 
     private void OnUpdateToastTimerTick(object? sender, EventArgs e)
@@ -299,6 +351,7 @@ public partial class MainWindow : Window, IDisposable
     private void HideUpdateNotice()
     {
         _updateToastTimer.Stop();
+        _updateEllipsisTimer.Stop();
         var animation = new DoubleAnimation(
             UpdateToast.Opacity,
             0,
@@ -389,6 +442,7 @@ public partial class MainWindow : Window, IDisposable
     {
         _appStayPromptPolicy.Reset();
         UpdateFullScreenAutoPauseState();
+        RefreshCustomIcons(forceRescan: false);
         OnPreviewLayoutChanged(sender, e);
     }
 
@@ -556,6 +610,379 @@ public partial class MainWindow : Window, IDisposable
         }
     }
 
+    private void OnWindowPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        // Operation messages are transient: any further interaction dismisses them.
+        // Scan-derived invalid details stay until the offending file is fixed.
+        if (_customIconMessage is null)
+        {
+            return;
+        }
+
+        _customIconMessage = null;
+        UpdateCustomIconHint();
+    }
+
+    private void OnPickCustomIconClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string tag } ||
+            !Enum.TryParse<InputState>(tag, out var state) ||
+            state == InputState.Unknown)
+        {
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Filter = "PNG 图片 (*.png)|*.png",
+            Title = $"选择{StateDisplayName(state)}的自定义图标",
+        };
+        if (dialog.ShowDialog(this) is not true)
+        {
+            return;
+        }
+
+        var validation = CustomIconCatalog.Validate(dialog.FileName);
+        if (!validation.IsValid)
+        {
+            SetCustomIconMessage(
+                $"图标未能应用：{CustomIconReasonText(validation.InvalidReason)}。",
+                isError: true);
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(_customIconsDirectory);
+            File.Copy(dialog.FileName, CustomIconFilePath(state), overwrite: true);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            SetCustomIconMessage("图标未能应用：图标文件夹不可写。", isError: true);
+            return;
+        }
+
+        RefreshCustomIcons(forceRescan: true);
+        SetCustomIconMessage($"已更新{StateDisplayName(state)}的自定义图标。", isError: false);
+    }
+
+    private void OnClearCustomIconClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string tag } ||
+            !Enum.TryParse<InputState>(tag, out var state) ||
+            state == InputState.Unknown)
+        {
+            return;
+        }
+
+        try
+        {
+            if (File.Exists(CustomIconFilePath(state)))
+            {
+                File.Delete(CustomIconFilePath(state));
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            SetCustomIconMessage("清除失败：文件被占用或不可写。", isError: true);
+            return;
+        }
+
+        RefreshCustomIcons(forceRescan: true);
+        SetCustomIconMessage(
+            $"已清除{StateDisplayName(state)}的自定义图标，恢复使用内置图标。",
+            isError: false);
+    }
+
+    private void OnOpenIconsFolderClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Directory.CreateDirectory(_customIconsDirectory);
+            var readmePath = Path.Combine(_customIconsDirectory, "README.txt");
+            if (!File.Exists(readmePath))
+            {
+                File.WriteAllText(readmePath, CustomIconsReadmeText, Encoding.UTF8);
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            SetCustomIconMessage("无法创建图标文件夹。", isError: true);
+            return;
+        }
+
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = _customIconsDirectory,
+            UseShellExecute = true,
+        });
+    }
+
+    private void OnRescanIconsClick(object sender, RoutedEventArgs e)
+    {
+        RefreshCustomIcons(forceRescan: true);
+        SetCustomIconMessage("已重新扫描图标文件夹。", isError: false);
+    }
+
+    private void OnCustomShadowChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_settingsInitialized ||
+            sender is not RadioButton { Tag: string tag } ||
+            !Enum.TryParse(tag, out CustomIconShadowMode mode) ||
+            !Enum.IsDefined(mode))
+        {
+            return;
+        }
+
+        _customShadow = mode;
+        ConfigureOverlay();
+        SetCustomIconMessage(
+            mode == CustomIconShadowMode.None
+                ? "已关闭自定义图标阴影。"
+                : $"自定义图标阴影已切换为{CustomShadowName(mode)}。",
+            isError: false);
+        if (!PersistSettings())
+        {
+            SetCustomIconMessage("设置已应用，但未能保存。", isError: true);
+        }
+    }
+
+    private void SetCustomShadowSelection(CustomIconShadowMode mode)
+    {
+        CustomShadowNoneRadio.IsChecked = mode == CustomIconShadowMode.None;
+        CustomShadowLightRadio.IsChecked = mode == CustomIconShadowMode.Light;
+        CustomShadowHeavyRadio.IsChecked = mode == CustomIconShadowMode.Heavy;
+        CustomShadowSolidRadio.IsChecked = mode == CustomIconShadowMode.Solid;
+    }
+
+    private static string CustomShadowName(CustomIconShadowMode mode) => mode switch
+    {
+        CustomIconShadowMode.Light => "轻",
+        CustomIconShadowMode.Heavy => "重",
+        CustomIconShadowMode.Solid => "实心",
+        _ => "不显示",
+    };
+
+    private void RefreshCustomIcons(bool forceRescan)
+    {
+        var result = CustomIconCatalog.Scan(_customIconsDirectory);
+        if (!forceRescan && result.Equals(_customIconCatalogResult))
+        {
+            return;
+        }
+
+        _customIconCatalogResult = result;
+        _customIconImages = CustomIconImages.From(result);
+        _overlayPresenter.UpdateCustomIcons(_customIconImages);
+        foreach (var cell in _previewCells)
+        {
+            cell.Control.UpdateCustomIcons(_customIconImages);
+        }
+
+        UpdateCustomIconRows();
+        ShowPreviewOverlay();
+    }
+
+    private void UpdateCustomIconRows()
+    {
+        UpdateCustomIconRow(
+            _customIconCatalogResult.Chinese,
+            ChineseIconThumbnail,
+            ChineseIconPlaceholder,
+            ChineseIconStatus,
+            ClearChineseIconButton);
+        UpdateCustomIconRow(
+            _customIconCatalogResult.English,
+            EnglishIconThumbnail,
+            EnglishIconPlaceholder,
+            EnglishIconStatus,
+            ClearEnglishIconButton);
+        UpdateCustomIconRow(
+            _customIconCatalogResult.EnglishUs,
+            EnglishUsIconThumbnail,
+            EnglishUsIconPlaceholder,
+            EnglishUsIconStatus,
+            ClearEnglishUsIconButton);
+        UpdateCustomIconRow(
+            _customIconCatalogResult.CapsLock,
+            CapsLockIconThumbnail,
+            CapsLockIconPlaceholder,
+            CapsLockIconStatus,
+            ClearCapsLockIconButton);
+        UpdateCustomIconHint();
+    }
+
+    private void UpdateCustomIconHint()
+    {
+        var invalid = new List<string>();
+        AppendInvalidIconDescription(InputState.Chinese, _customIconCatalogResult.Chinese, invalid);
+        AppendInvalidIconDescription(InputState.English, _customIconCatalogResult.English, invalid);
+        AppendInvalidIconDescription(InputState.EnglishUs, _customIconCatalogResult.EnglishUs, invalid);
+        AppendInvalidIconDescription(InputState.CapsLock, _customIconCatalogResult.CapsLock, invalid);
+        if (invalid.Count > 0)
+        {
+            ShowCustomIconHint(string.Join("；", invalid) + "。", isError: true);
+            return;
+        }
+
+        if (_customIconMessage is not null)
+        {
+            ShowCustomIconHint(_customIconMessage, _customIconMessageIsError);
+            return;
+        }
+
+        ShowCustomIconHint(CustomIconHintText, isError: false);
+    }
+
+    private void ShowCustomIconHint(string text, bool isError)
+    {
+        CustomIconHint.Text = text;
+        if (isError)
+        {
+            CustomIconHint.Foreground = new SolidColorBrush(Color.FromRgb(0xE5, 0x53, 0x4B));
+            return;
+        }
+
+        CustomIconHint.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+    }
+
+    private void SetCustomIconMessage(string text, bool isError)
+    {
+        _customIconMessage = text;
+        _customIconMessageIsError = isError;
+        UpdateCustomIconHint();
+    }
+
+    private static void AppendInvalidIconDescription(
+        InputState state,
+        CustomIconSlotResult slot,
+        List<string> descriptions)
+    {
+        if (slot.Status == CustomIconSlotStatus.Invalid)
+        {
+            descriptions.Add(
+                $"{StateDisplayName(state)}的图标无效：{CustomIconReasonText(slot.InvalidReason)}");
+        }
+    }
+
+    private static void UpdateCustomIconRow(
+        CustomIconSlotResult slot,
+        System.Windows.Controls.Image thumbnail,
+        TextBlock placeholder,
+        TextBlock status,
+        Button clearButton)
+    {
+        if (slot.IsValid)
+        {
+            thumbnail.Source = CreateIconThumbnail(slot.FilePath);
+            thumbnail.Visibility = thumbnail.Source is null
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+            placeholder.Visibility = thumbnail.Source is null
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            status.Text = $"已设置（{slot.PixelWidth}×{slot.PixelHeight}）";
+            status.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+            clearButton.IsEnabled = true;
+            return;
+        }
+
+        thumbnail.Source = null;
+        thumbnail.Visibility = Visibility.Collapsed;
+        placeholder.Visibility = Visibility.Visible;
+        clearButton.IsEnabled = slot.Status == CustomIconSlotStatus.Invalid;
+        if (slot.Status == CustomIconSlotStatus.Invalid)
+        {
+            status.Text = "无效";
+            status.Foreground = new SolidColorBrush(Color.FromRgb(0xE5, 0x53, 0x4B));
+            return;
+        }
+
+        status.Text = "使用内置图标";
+        status.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+    }
+
+    private static BitmapImage? CreateIconThumbnail(string? filePath)
+    {
+        if (filePath is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            // Byte-stream decode, same as the indicator: avoids WPF's URI-keyed
+            // bitmap cache serving stale frames after the file is replaced.
+            using var stream = new MemoryStream(File.ReadAllBytes(filePath));
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.StreamSource = stream;
+            image.DecodePixelWidth = 64;
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        catch (Exception exception) when (
+            exception is IOException or
+                UnauthorizedAccessException or
+                NotSupportedException or
+                FileFormatException)
+        {
+            return null;
+        }
+    }
+
+    private string CustomIconFilePath(InputState state) => Path.Combine(
+        _customIconsDirectory,
+        state switch
+        {
+            InputState.Chinese => CustomIconCatalog.ChineseFileName,
+            InputState.English => CustomIconCatalog.EnglishFileName,
+            InputState.EnglishUs => CustomIconCatalog.EnglishUsFileName,
+            InputState.CapsLock => CustomIconCatalog.CapsLockFileName,
+            _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
+        });
+
+    private static string StateDisplayName(InputState state) => state switch
+    {
+        InputState.Chinese => "中文",
+        InputState.English => "输入法英文",
+        InputState.EnglishUs => "美式键盘",
+        InputState.CapsLock => "大写锁定",
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
+    };
+
+    private static string CustomIconReasonText(CustomIconInvalidReason reason) => reason switch
+    {
+        CustomIconInvalidReason.FileTooLarge => $"文件超过 {CustomIconCatalog.MaxFileBytes / (1024 * 1024)} MB",
+        CustomIconInvalidReason.DimensionsTooLarge => $"图片尺寸超过 {CustomIconCatalog.MaxPixelDimension}×{CustomIconCatalog.MaxPixelDimension}",
+        CustomIconInvalidReason.JpegNotPng => "文件实际是 JPEG 格式，请另存为 PNG 后重试",
+        _ => "不是有效的 PNG 文件",
+    };
+
+    private const string CustomIconHintText = "请选择PNG图片，推荐256x256尺寸；或者直接在文件夹里替换，然后重新扫描。";
+
+    private const string CustomIconsReadmeText = """"
+        InputCue 自定义图标
+        ==================
+
+        把 PNG 图片放入本文件夹并按下列名称命名，即可替换对应状态的提示图标：
+
+          chinese.png      中文
+          ime-english.png  输入法英文
+          us-english.png   美式键盘（ENG）
+          caps-lock.png    大写锁定
+
+        说明：
+        - 建议使用不小于 256×256 的 PNG；删除某个文件即恢复该状态的内置图标。
+        - 无法解析、大于 10 MB 或超过 4096×4096 的文件不会生效，设置页会给出原因。
+        - 直接修改本文件夹后，回到设置页点击「重新扫描」或重启 InputCue。
+        """";
+
     private void OnClearDiagnosticsClick(object sender, RoutedEventArgs e)
     {
         _history.Clear();
@@ -632,7 +1059,7 @@ public partial class MainWindow : Window, IDisposable
         if (!IsVisible || WindowState is WindowState.Minimized)
         {
             _previewAllowed = false;
-            PreviewIndicator.Visibility = Visibility.Collapsed;
+            SetPreviewCellsVisibility(Visibility.Collapsed);
             return;
         }
 
@@ -645,7 +1072,7 @@ public partial class MainWindow : Window, IDisposable
         if (!IsVisible || WindowState is WindowState.Minimized)
         {
             _previewAllowed = false;
-            PreviewIndicator.Visibility = Visibility.Collapsed;
+            SetPreviewCellsVisibility(Visibility.Collapsed);
             return;
         }
 
@@ -1163,17 +1590,20 @@ public partial class MainWindow : Window, IDisposable
     }
 
     private IndicatorStyle GetSelectedStyle() =>
-        ShadowBadgeStyleRadio.IsChecked is true
-            ? IndicatorStyle.ShadowBadge
-            : LightBadgeStyleRadio.IsChecked is true
-                ? IndicatorStyle.LightBadge
-                : IndicatorStyle.Dot;
+        CustomStyleRadio.IsChecked is true
+            ? IndicatorStyle.Custom
+            : ShadowBadgeStyleRadio.IsChecked is true
+                ? IndicatorStyle.ShadowBadge
+                : LightBadgeStyleRadio.IsChecked is true
+                    ? IndicatorStyle.LightBadge
+                    : IndicatorStyle.Dot;
 
     private void SetStyleSelection(IndicatorStyle style)
     {
         DotStyleRadio.IsChecked = style == IndicatorStyle.Dot;
         LightBadgeStyleRadio.IsChecked = style == IndicatorStyle.LightBadge;
         ShadowBadgeStyleRadio.IsChecked = style == IndicatorStyle.ShadowBadge;
+        CustomStyleRadio.IsChecked = style == IndicatorStyle.Custom;
     }
 
     private IndicatorAppearanceSettings GetAppearance(IndicatorStyle style) => style switch
@@ -1181,6 +1611,7 @@ public partial class MainWindow : Window, IDisposable
         IndicatorStyle.Dot => _dotAppearance,
         IndicatorStyle.LightBadge => _lightBadgeAppearance,
         IndicatorStyle.ShadowBadge => _shadowBadgeAppearance,
+        IndicatorStyle.Custom => _customAppearance,
         _ => throw new ArgumentOutOfRangeException(nameof(style), style, null),
     };
 
@@ -1196,6 +1627,9 @@ public partial class MainWindow : Window, IDisposable
                 break;
             case IndicatorStyle.ShadowBadge:
                 _shadowBadgeAppearance = appearance;
+                break;
+            case IndicatorStyle.Custom:
+                _customAppearance = appearance;
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(style), style, null);
@@ -1227,10 +1661,16 @@ public partial class MainWindow : Window, IDisposable
         DotSizePanel.Visibility = style == IndicatorStyle.Dot
             ? Visibility.Visible
             : Visibility.Collapsed;
-        BadgeSizePanel.Visibility = style is IndicatorStyle.LightBadge or IndicatorStyle.ShadowBadge
+        BadgeSizePanel.Visibility = style is IndicatorStyle.LightBadge or IndicatorStyle.ShadowBadge or IndicatorStyle.Custom
             ? Visibility.Visible
             : Visibility.Collapsed;
+        BadgeSizeLabel.Text = style == IndicatorStyle.Custom
+            ? "图标尺寸"
+            : "徽标尺寸";
         DotColorPanel.Visibility = style == IndicatorStyle.Dot
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        CustomIconPanel.Visibility = style == IndicatorStyle.Custom
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
@@ -1302,7 +1742,31 @@ public partial class MainWindow : Window, IDisposable
             englishDotColor,
             englishUsDotColor,
             capsLockDotColor);
-        PreviewIndicator.Configure(
+        PreviewIndicatorChinese.Configure(
+            style,
+            dotSize,
+            badgeSize,
+            chineseDotColor,
+            englishDotColor,
+            englishUsDotColor,
+            capsLockDotColor);
+        PreviewIndicatorEnglish.Configure(
+            style,
+            dotSize,
+            badgeSize,
+            chineseDotColor,
+            englishDotColor,
+            englishUsDotColor,
+            capsLockDotColor);
+        PreviewIndicatorEnglishUs.Configure(
+            style,
+            dotSize,
+            badgeSize,
+            chineseDotColor,
+            englishDotColor,
+            englishUsDotColor,
+            capsLockDotColor);
+        PreviewIndicatorCapsLock.Configure(
             style,
             dotSize,
             badgeSize,
@@ -1317,32 +1781,49 @@ public partial class MainWindow : Window, IDisposable
     {
         if (!_settingsInitialized || !_previewAllowed || !IsVisible ||
             WindowState is WindowState.Minimized ||
-            !PreviewCaret.IsVisible || PreviewCaret.ActualWidth <= 0 || PreviewCaret.ActualHeight <= 0)
+            !PreviewCaretChinese.IsVisible ||
+            PreviewCaretChinese.ActualWidth <= 0 || PreviewCaretChinese.ActualHeight <= 0)
         {
-            PreviewIndicator.Visibility = Visibility.Collapsed;
+            SetPreviewCellsVisibility(Visibility.Collapsed);
             return;
         }
 
-        var inputState = _lastBaseDiagnostic?.Snapshot.InputState ?? InputState.Chinese;
-        inputState = EffectiveInputState.Resolve(inputState, UiCapsLockProbe.IsEnabled());
-        if (inputState is InputState.Unknown)
+        for (var index = 0; index < _previewCells.Length; index++)
         {
-            inputState = InputState.Chinese;
+            var cell = _previewCells[index];
+            cell.Control.Render(PreviewCellStates[index]);
+            cell.Control.Visibility = Visibility.Visible;
+            PositionCellPreview(cell);
         }
-
-        PreviewIndicator.Render(inputState);
-        PreviewIndicator.Visibility = Visibility.Visible;
-        PositionPreviewIndicator();
     }
 
-    private void PositionPreviewIndicator()
+    private void PositionCellPreview(in PreviewCell cell)
     {
         const double gap = 6;
+        var cellWidth = cell.BoxCanvas.ActualWidth;
+        var cellHeight = cell.BoxCanvas.ActualHeight;
+        var boxWidth = cell.Box.ActualWidth;
+        var boxHeight = cell.Box.ActualHeight;
+        var width = cell.Control.Width;
+        var height = cell.Control.Height;
+        if (cellWidth <= 0 || cellHeight <= 0 || boxWidth <= 0 || boxHeight <= 0 ||
+            width <= 0 || height <= 0 || double.IsNaN(width) || double.IsNaN(height))
+        {
+            return;
+        }
+
+        // The mock input box stays centered; the indicator is placed with the exact
+        // on-screen formula relative to the caret, overflowing the cell when needed.
+        var boxX = (cellWidth - boxWidth) / 2;
+        var boxY = (cellHeight - boxHeight) / 2;
+        Canvas.SetLeft(cell.Box, boxX);
+        Canvas.SetTop(cell.Box, boxY);
+        var caretInBox = cell.Caret.TranslatePoint(new Point(), cell.Box);
         var anchor = new Rect(
-            PreviewCaret.TranslatePoint(new Point(), PreviewCanvas),
-            PreviewCaret.RenderSize);
-        var width = PreviewIndicator.Width;
-        var height = PreviewIndicator.Height;
+            boxX + caretInBox.X,
+            boxY + caretInBox.Y,
+            cell.Caret.ActualWidth,
+            cell.Caret.ActualHeight);
         var fallback = GetAppearance(GetSelectedStyle());
         var placement = GetSelectedPlacement() ?? fallback.Placement;
         var horizontalOffset = int.TryParse(HorizontalOffsetTextBox.Text, out var parsedHorizontal)
@@ -1365,12 +1846,16 @@ public partial class MainWindow : Window, IDisposable
             IndicatorPlacement.BottomRight => new Point(anchor.Right + gap, anchor.Bottom + gap),
             _ => new Point(anchor.Right + gap, anchor.Bottom + gap),
         };
-        Canvas.SetLeft(
-            PreviewIndicator,
-            Math.Clamp(position.X + horizontalOffset, 0, Math.Max(0, PreviewCanvas.ActualWidth - width)));
-        Canvas.SetTop(
-            PreviewIndicator,
-            Math.Clamp(position.Y + verticalOffset, 0, Math.Max(0, PreviewCanvas.ActualHeight - height)));
+        Canvas.SetLeft(cell.Control, position.X + horizontalOffset);
+        Canvas.SetTop(cell.Control, position.Y + verticalOffset);
+    }
+
+    private void SetPreviewCellsVisibility(Visibility visibility)
+    {
+        foreach (var cell in _previewCells)
+        {
+            cell.Control.Visibility = visibility;
+        }
     }
 
     private void ConfigureOverlay()
@@ -1387,14 +1872,21 @@ public partial class MainWindow : Window, IDisposable
             _englishDotColor,
             _englishUsDotColor,
             _capsLockDotColor);
-        PreviewIndicator.Configure(
-            _style,
-            _dotAppearance.SizeDip,
-            _style == IndicatorStyle.Dot ? _lightBadgeAppearance.SizeDip : appearance.SizeDip,
-            _chineseDotColor,
-            _englishDotColor,
-            _englishUsDotColor,
-            _capsLockDotColor);
+        _overlayPresenter.UpdateCustomShadow(_customShadow);
+        foreach (var cell in _previewCells)
+        {
+            cell.Control.Configure(
+                _style,
+                _dotAppearance.SizeDip,
+                _style == IndicatorStyle.Dot ? _lightBadgeAppearance.SizeDip : appearance.SizeDip,
+                _chineseDotColor,
+                _englishDotColor,
+                _englishUsDotColor,
+                _capsLockDotColor);
+            cell.Control.UpdateCustomShadow(_customShadow);
+        }
+
+        ShowPreviewOverlay();
     }
 
     private static string StyleName(IndicatorStyle style) => style switch
@@ -1402,6 +1894,7 @@ public partial class MainWindow : Window, IDisposable
         IndicatorStyle.Dot => "圆点",
         IndicatorStyle.LightBadge => "描边",
         IndicatorStyle.ShadowBadge => "阴影",
+        IndicatorStyle.Custom => "自定义",
         _ => "圆点",
     };
 
@@ -1446,6 +1939,8 @@ public partial class MainWindow : Window, IDisposable
             _dotAppearance,
             _lightBadgeAppearance,
             _shadowBadgeAppearance,
+            _customAppearance,
+            CustomIconShadow: _customShadow,
             _sameAppPromptMode,
             _sameAppPromptDelaySeconds,
             _fullScreenAutoPause));

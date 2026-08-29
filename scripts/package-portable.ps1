@@ -61,6 +61,27 @@ if (-not (Test-Path -LiteralPath $dotnetLicensePath) -or
 Copy-Item -LiteralPath $dotnetLicensePath -Destination (Join-Path $licenseRoot 'DOTNET-LICENSE.txt')
 Copy-Item -LiteralPath $dotnetNoticesPath -Destination (Join-Path $licenseRoot 'DOTNET-THIRD-PARTY-NOTICES.txt')
 
+$iconsTemplateRoot = Join-Path $packageRoot 'icons-template'
+New-Item -ItemType Directory -Path $iconsTemplateRoot -Force | Out-Null
+$iconTemplatePairs = @(
+    @{ Source = '中.svg'; Target = 'chinese.svg' },
+    @{ Source = '英.svg'; Target = 'ime-english.svg' },
+    @{ Source = 'ENG.svg'; Target = 'us-english.svg' },
+    @{ Source = 'A.svg'; Target = 'caps-lock.svg' })
+foreach ($pair in $iconTemplatePairs) {
+    Copy-Item -LiteralPath (Join-Path $repoRoot (Join-Path 'assets/indicator/light-badge' $pair.Source)) -Destination (Join-Path $iconsTemplateRoot $pair.Target)
+}
+[IO.File]::WriteAllText(
+    (Join-Path $iconsTemplateRoot 'README.txt'),
+    @'
+这些是「描边」样式四个内置字形的 SVG 源文件。
+
+把编辑后的图导出为 PNG，放入程序目录的 data/icons/ 并按标准文件名命名
+（chinese.png、ime-english.png、us-english.png、caps-lock.png），
+即可替换对应状态的提示图标。详见程序设置页「自定义图标」。
+'@,
+    [Text.UTF8Encoding]::new($false))
+
 $assetName = "InputCue-$Version-win-x64-portable.zip"
 $assetPath = Join-Path $releaseRoot $assetName
 Compress-Archive -Path (Join-Path $packageRoot '*') -DestinationPath $assetPath -CompressionLevel Optimal

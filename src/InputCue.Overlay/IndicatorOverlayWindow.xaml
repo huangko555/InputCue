@@ -44,5 +44,10 @@
                 </Viewbox>
             </Border>
         </Canvas>
+        <Image x:Name="LightBadgeCustomIcon"
+               HorizontalAlignment="Left"
+               VerticalAlignment="Top"
+               Stretch="Uniform"
+               Visibility="Collapsed" />
     </Grid>
 </Window>

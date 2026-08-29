@@ -50,6 +50,30 @@ public sealed class InputCueSettingsStoreTests
     }
 
     [Fact]
+    public void CustomStyleAndAppearanceRoundTrip()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var store = new InputCueSettingsStore(path);
+        var settings = new InputCueSettings(
+            1200,
+            400,
+            Style: IndicatorStyle.Custom,
+            CustomAppearance: new(IndicatorPlacement.Top, 3, -2, 56),
+            CustomIconShadow: CustomIconShadowMode.Solid);
+
+        Assert.True(store.TrySave(settings));
+
+        var loaded = store.Load();
+        Assert.Equal(settings, loaded);
+        Assert.Equal(IndicatorStyle.Custom, loaded.Style);
+        Assert.Equal(CustomIconShadowMode.Solid, loaded.CustomIconShadow);
+        Assert.Equal(
+            settings.GetAppearance(IndicatorStyle.Custom),
+            loaded.GetAppearance(IndicatorStyle.Custom));
+    }
+
+    [Fact]
     public void ExistingSettingsGainPositionDefaultsWithoutLosingTimingValues()
     {
         using var directory = new TemporaryDirectory();

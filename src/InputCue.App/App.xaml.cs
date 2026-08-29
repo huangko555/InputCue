@@ -102,6 +102,7 @@ public partial class App : System.Windows.Application
                 "InputCue");
         var settingsPath = Path.Combine(dataDirectory, "settings.json");
         var settingsStore = new InputCueSettingsStore(settingsPath);
+        var customIconsDirectory = Path.Combine(dataDirectory, "icons");
         var executablePath = Environment.ProcessPath;
         _updateCancellation = new CancellationTokenSource();
         _updateManager = new PortableUpdateManager(
@@ -117,7 +118,8 @@ public partial class App : System.Windows.Application
             enabled => executablePath is not null &&
                 StartupRegistration.TrySetEnabled(enabled, executablePath),
             () => CheckAndApplyUpdateAsync(manual: true),
-            OpenGitHub);
+            OpenGitHub,
+            customIconsDirectory);
         MainWindow = mainWindow;
         mainWindow.Closing += OnMainWindowClosing;
         mainWindow.WatchingStateChanged += OnWatchingStateChanged;

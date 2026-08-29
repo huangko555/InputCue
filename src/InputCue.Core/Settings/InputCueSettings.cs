@@ -19,6 +19,8 @@ public sealed record InputCueSettings(
     IndicatorAppearanceSettings? DotAppearance = null,
     IndicatorAppearanceSettings? LightBadgeAppearance = null,
     IndicatorAppearanceSettings? ShadowBadgeAppearance = null,
+    IndicatorAppearanceSettings? CustomAppearance = null,
+    CustomIconShadowMode CustomIconShadow = CustomIconShadowMode.None,
     AppStayPromptMode SameAppPromptMode = AppStayPromptMode.AfterDelay,
     int SameAppPromptDelaySeconds = 300,
     bool FullScreenAutoPause = true)
@@ -62,6 +64,8 @@ public sealed record InputCueSettings(
         IsValidAppearance(DotAppearance, IndicatorStyle.Dot) &&
         IsValidAppearance(LightBadgeAppearance, IndicatorStyle.LightBadge) &&
         IsValidAppearance(ShadowBadgeAppearance, IndicatorStyle.ShadowBadge) &&
+        IsValidAppearance(CustomAppearance, IndicatorStyle.Custom) &&
+        Enum.IsDefined(CustomIconShadow) &&
         Enum.IsDefined(SameAppPromptMode) &&
         SameAppPromptDelaySeconds is >= MinimumSameAppPromptDelaySeconds
             and <= MaximumSameAppPromptDelaySeconds;
@@ -79,6 +83,11 @@ public sealed record InputCueSettings(
             VerticalOffsetDip,
             LightBadgeSizeDip),
         IndicatorStyle.ShadowBadge => ShadowBadgeAppearance ?? new(
+            Placement,
+            HorizontalOffsetDip,
+            VerticalOffsetDip,
+            LightBadgeSizeDip),
+        IndicatorStyle.Custom => CustomAppearance ?? new(
             Placement,
             HorizontalOffsetDip,
             VerticalOffsetDip,

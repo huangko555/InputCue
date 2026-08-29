@@ -32,5 +32,10 @@
                 </Viewbox>
             </Border>
         </Canvas>
+        <Image x:Name="BadgeCustomIcon"
+               HorizontalAlignment="Left"
+               VerticalAlignment="Top"
+               Stretch="Uniform"
+               Visibility="Collapsed" />
     </Grid>
 </UserControl>

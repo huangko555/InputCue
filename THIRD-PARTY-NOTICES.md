@@ -16,6 +16,12 @@ InputCue 使用 Microsoft.Windows.CsWin32 在构建时生成 Windows API 绑定�
 
 <https://github.com/microsoft/CsWin32>
 
+## Lucide
+
+设置页「自定义」样式按钮中的编辑图标取自 Lucide 的 `square-pen` 图标（以矢量路径数据内嵌）。Lucide 采用 ISC License：
+
+<https://lucide.dev>
+
 ## 开发与测试依赖
 
 测试项目使用 xUnit、Microsoft.NET.Test.Sdk、coverlet.collector 与 xunit.runner.visualstudio。这些工具不随 InputCue 便携版分发；其许可证与归属信息可在各自的 NuGet 包和上游仓库中查看。

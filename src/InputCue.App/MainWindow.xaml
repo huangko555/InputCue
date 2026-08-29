@@ -4,6 +4,7 @@
         xmlns:overlay="clr-namespace:InputCue.Overlay;assembly=InputCue.Overlay"
         Title="InputCue"
         Icon="/Assets/InputCue.ico"
+        PreviewMouseDown="OnWindowPreviewMouseDown"
         Width="820"
         Height="940"
         MinWidth="820"
@@ -234,6 +235,12 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <Style x:Key="CompactSegmentRadioStyle" TargetType="RadioButton" BasedOn="{StaticResource SegmentRadioStyle}">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="10,3" />
         </Style>
 
         <Style x:Key="OptionRadioStyle" TargetType="RadioButton">
@@ -816,6 +823,31 @@
                                             </Grid>
                                         </StackPanel>
                                     </RadioButton>
+                                    <RadioButton x:Name="CustomStyleRadio"
+                                                 Style="{StaticResource SegmentRadioStyle}"
+                                                 GroupName="IndicatorStyle"
+                                                 Tag="Custom"
+                                                 Checked="OnStylePreviewChanged">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock VerticalAlignment="Center" Text="自定义" />
+                                            <Grid Width="25" Height="25" Margin="10,0,0,0">
+                                                <Viewbox Width="18"
+                                                         Height="18"
+                                                         HorizontalAlignment="Center"
+                                                         VerticalAlignment="Center"
+                                                         Stretch="Uniform">
+                                                    <!-- Lucide "square-pen" (ISC License, (c) Lucide contributors) -->
+                                                    <Path Data="M12,3 H5 A2,2 0 0,0 3,5 V19 A2,2 0 0,0 5,21 H19 A2,2 0 0,0 21,19 V12 M18.375,2.625 A2.121,2.121 0 1,1 21.375,5.625 L12,15 L8,16 L9,12 Z"
+                                                          Stroke="#FF18181B"
+                                                          StrokeThickness="2"
+                                                          StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round"
+                                                          StrokeLineJoin="Round"
+                                                          StrokeMiterLimit="1" />
+                                                </Viewbox>
+                                            </Grid>
+                                        </StackPanel>
+                                    </RadioButton>
                                 </StackPanel>
                             </Border>
                             <Button Grid.Column="2"
@@ -828,7 +860,7 @@
 
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="250" />
+                                <ColumnDefinition Width="370" />
                                 <ColumnDefinition Width="20" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
@@ -840,26 +872,118 @@
                                         BorderThickness="1"
                                         CornerRadius="7">
                                     <Grid>
-                                        <Border Width="104"
-                                                Height="42"
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center"
-                                                Background="#FFFFFFFF"
-                                                BorderBrush="{StaticResource BorderBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="7">
-                                            <Rectangle x:Name="PreviewCaret"
-                                                       Width="2"
-                                                       Height="22"
-                                                       Margin="12,0,0,0"
-                                                       HorizontalAlignment="Left"
-                                                       VerticalAlignment="Center"
-                                                       Fill="#FF3F3F46" />
-                                        </Border>
-                                        <Canvas x:Name="PreviewCanvas" ClipToBounds="True">
-                                            <overlay:IndicatorPreviewControl x:Name="PreviewIndicator"
-                                                                              Visibility="Collapsed" />
-                                        </Canvas>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="*" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
+                                            <Grid Margin="8">
+                                                <Canvas x:Name="PreviewCanvasChinese">
+                                                    <Border x:Name="PreviewBoxChinese"
+                                                            Width="96"
+                                                            Height="38"
+                                                            Background="#FFFFFFFF"
+                                                            BorderBrush="{StaticResource BorderBrush}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="7">
+                                                        <Rectangle x:Name="PreviewCaretChinese"
+                                                                   Width="2"
+                                                                   Height="20"
+                                                                   Margin="10,0,0,0"
+                                                                   HorizontalAlignment="Left"
+                                                                   VerticalAlignment="Center"
+                                                                   Fill="#FF3F3F46" />
+                                                    </Border>
+                                                </Canvas>
+                                            </Grid>
+                                            <Grid Grid.Column="1" Margin="8">
+                                                <Canvas x:Name="PreviewCanvasEnglish">
+                                                    <Border x:Name="PreviewBoxEnglish"
+                                                            Width="96"
+                                                            Height="38"
+                                                            Background="#FFFFFFFF"
+                                                            BorderBrush="{StaticResource BorderBrush}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="7">
+                                                        <Rectangle x:Name="PreviewCaretEnglish"
+                                                                   Width="2"
+                                                                   Height="20"
+                                                                   Margin="10,0,0,0"
+                                                                   HorizontalAlignment="Left"
+                                                                   VerticalAlignment="Center"
+                                                                   Fill="#FF3F3F46" />
+                                                    </Border>
+                                                </Canvas>
+                                            </Grid>
+                                            <Grid Grid.Row="1" Margin="8,0,8,8">
+                                                <Canvas x:Name="PreviewCanvasEnglishUs">
+                                                    <Border x:Name="PreviewBoxEnglishUs"
+                                                            Width="96"
+                                                            Height="38"
+                                                            Background="#FFFFFFFF"
+                                                            BorderBrush="{StaticResource BorderBrush}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="7">
+                                                        <Rectangle x:Name="PreviewCaretEnglishUs"
+                                                                   Width="2"
+                                                                   Height="20"
+                                                                   Margin="10,0,0,0"
+                                                                   HorizontalAlignment="Left"
+                                                                   VerticalAlignment="Center"
+                                                                   Fill="#FF3F3F46" />
+                                                    </Border>
+                                                </Canvas>
+                                            </Grid>
+                                            <Grid Grid.Row="1" Grid.Column="1" Margin="8,0,8,8">
+                                                <Canvas x:Name="PreviewCanvasCapsLock">
+                                                    <Border x:Name="PreviewBoxCapsLock"
+                                                            Width="96"
+                                                            Height="38"
+                                                            Background="#FFFFFFFF"
+                                                            BorderBrush="{StaticResource BorderBrush}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="7">
+                                                        <Rectangle x:Name="PreviewCaretCapsLock"
+                                                                   Width="2"
+                                                                   Height="20"
+                                                                   Margin="10,0,0,0"
+                                                                   HorizontalAlignment="Left"
+                                                                   VerticalAlignment="Center"
+                                                                   Fill="#FF3F3F46" />
+                                                    </Border>
+                                                </Canvas>
+                                            </Grid>
+                                        </Grid>
+                                        <Grid IsHitTestVisible="False">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="*" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
+                                            <Canvas x:Name="PreviewIconCanvasChinese" Margin="8">
+                                                <overlay:IndicatorPreviewControl x:Name="PreviewIndicatorChinese"
+                                                                                  Visibility="Collapsed" />
+                                            </Canvas>
+                                            <Canvas x:Name="PreviewIconCanvasEnglish" Grid.Column="1" Margin="8">
+                                                <overlay:IndicatorPreviewControl x:Name="PreviewIndicatorEnglish"
+                                                                                  Visibility="Collapsed" />
+                                            </Canvas>
+                                            <Canvas x:Name="PreviewIconCanvasEnglishUs" Grid.Row="1" Margin="8,0,8,8">
+                                                <overlay:IndicatorPreviewControl x:Name="PreviewIndicatorEnglishUs"
+                                                                                  Visibility="Collapsed" />
+                                            </Canvas>
+                                            <Canvas x:Name="PreviewIconCanvasCapsLock" Grid.Row="1" Grid.Column="1" Margin="8,0,8,8">
+                                                <overlay:IndicatorPreviewControl x:Name="PreviewIndicatorCapsLock"
+                                                                                  Visibility="Collapsed" />
+                                            </Canvas>
+                                        </Grid>
                                     </Grid>
                                 </Border>
                             </StackPanel>
@@ -919,7 +1043,7 @@
                                             </Border>
                                         </StackPanel>
                                         <StackPanel x:Name="BadgeSizePanel" Visibility="Collapsed">
-                                            <TextBlock Margin="0,0,0,5" Foreground="{StaticResource MutedBrush}" Text="徽标尺寸" />
+                                            <TextBlock x:Name="BadgeSizeLabel" Margin="0,0,0,5" Foreground="{StaticResource MutedBrush}" Text="徽标尺寸" />
                                             <Border Width="160" HorizontalAlignment="Left" Background="#FFFFFFFF" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="7">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
@@ -1034,6 +1158,248 @@
                                 </StackPanel>
                             </StackPanel>
                         </StackPanel>
+                        <StackPanel x:Name="CustomIconPanel" Margin="0,18,0,0" Visibility="Collapsed">
+                            <TextBlock Margin="0,0,0,4"
+                                       Foreground="{StaticResource MutedBrush}"
+                                       Text="自定义图标" />
+                            <TextBlock x:Name="CustomIconHint"
+                                       Margin="1,0,0,10"
+                                       Foreground="{StaticResource MutedBrush}"
+                                       Text="请选择PNG图片，推荐256x256尺寸；或者直接在文件夹里替换，然后重新扫描。"
+                                       TextWrapping="Wrap" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid Margin="0,0,12,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="36"
+                                            Height="36"
+                                            Background="#FFFAFAFA"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="5">
+                                        <Grid>
+                                            <TextBlock x:Name="ChineseIconPlaceholder"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#FF71717A"
+                                                       Text="中" />
+                                            <Image x:Name="ChineseIconThumbnail"
+                                                   Width="30"
+                                                   Height="30"
+                                                   Stretch="Uniform"
+                                                   Visibility="Collapsed" />
+                                        </Grid>
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="中文" />
+                                        <TextBlock x:Name="ChineseIconStatus"
+                                                   FontSize="11.5"
+                                                   Foreground="{StaticResource MutedBrush}"
+                                                   Text="使用内置图标" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                                        <Button Click="OnPickCustomIconClick" Content="选择图片…" Tag="Chinese" />
+                                        <Button x:Name="ClearChineseIconButton"
+                                                Margin="8,0,0,0"
+                                                Click="OnClearCustomIconClick"
+                                                Content="清除"
+                                                IsEnabled="False"
+                                                Tag="Chinese" />
+                                    </StackPanel>
+                                </Grid>
+                                <Border Grid.Column="1" Grid.RowSpan="2" Width="1" Margin="0,4" Background="#FFD4D4D8" />
+                                <Grid Grid.Column="2" Margin="12,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="36"
+                                            Height="36"
+                                            Background="#FFFAFAFA"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="5">
+                                        <Grid>
+                                            <TextBlock x:Name="EnglishIconPlaceholder"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#FF71717A"
+                                                       Text="英" />
+                                            <Image x:Name="EnglishIconThumbnail"
+                                                   Width="30"
+                                                   Height="30"
+                                                   Stretch="Uniform"
+                                                   Visibility="Collapsed" />
+                                        </Grid>
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="输入法英文" />
+                                        <TextBlock x:Name="EnglishIconStatus"
+                                                   FontSize="11.5"
+                                                   Foreground="{StaticResource MutedBrush}"
+                                                   Text="使用内置图标" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                                        <Button Click="OnPickCustomIconClick" Content="选择图片…" Tag="English" />
+                                        <Button x:Name="ClearEnglishIconButton"
+                                                Margin="8,0,0,0"
+                                                Click="OnClearCustomIconClick"
+                                                Content="清除"
+                                                IsEnabled="False"
+                                                Tag="English" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Grid.Row="1" Margin="0,0,12,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="36"
+                                            Height="36"
+                                            Background="#FFFAFAFA"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="5">
+                                        <Grid>
+                                            <TextBlock x:Name="EnglishUsIconPlaceholder"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="10.5"
+                                                       Foreground="#FF71717A"
+                                                       Text="ENG" />
+                                            <Image x:Name="EnglishUsIconThumbnail"
+                                                   Width="30"
+                                                   Height="30"
+                                                   Stretch="Uniform"
+                                                   Visibility="Collapsed" />
+                                        </Grid>
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="美式键盘" />
+                                        <TextBlock x:Name="EnglishUsIconStatus"
+                                                   FontSize="11.5"
+                                                   Foreground="{StaticResource MutedBrush}"
+                                                   Text="使用内置图标" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                                        <Button Click="OnPickCustomIconClick" Content="选择图片…" Tag="EnglishUs" />
+                                        <Button x:Name="ClearEnglishUsIconButton"
+                                                Margin="8,0,0,0"
+                                                Click="OnClearCustomIconClick"
+                                                Content="清除"
+                                                IsEnabled="False"
+                                                Tag="EnglishUs" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Grid.Row="1" Grid.Column="2" Margin="12,0,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="36"
+                                            Height="36"
+                                            Background="#FFFAFAFA"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="5">
+                                        <Grid>
+                                            <TextBlock x:Name="CapsLockIconPlaceholder"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#FF71717A"
+                                                       Text="A" />
+                                            <Image x:Name="CapsLockIconThumbnail"
+                                                   Width="30"
+                                                   Height="30"
+                                                   Stretch="Uniform"
+                                                   Visibility="Collapsed" />
+                                        </Grid>
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="大写锁定" />
+                                        <TextBlock x:Name="CapsLockIconStatus"
+                                                   FontSize="11.5"
+                                                   Foreground="{StaticResource MutedBrush}"
+                                                   Text="使用内置图标" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                                        <Button Click="OnPickCustomIconClick" Content="选择图片…" Tag="CapsLock" />
+                                        <Button x:Name="ClearCapsLockIconButton"
+                                                Margin="8,0,0,0"
+                                                Click="OnClearCustomIconClick"
+                                                Content="清除"
+                                                IsEnabled="False"
+                                                Tag="CapsLock" />
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock VerticalAlignment="Center"
+                                               Foreground="{StaticResource MutedBrush}"
+                                               Text="阴影" />
+                                    <Border Margin="10,0,0,0"
+                                            Padding="4"
+                                            Background="{StaticResource SurfaceMutedBrush}"
+                                            CornerRadius="8">
+                                        <StackPanel Orientation="Horizontal">
+                                            <RadioButton x:Name="CustomShadowNoneRadio"
+                                                         Style="{StaticResource CompactSegmentRadioStyle}"
+                                                         GroupName="CustomIconShadow"
+                                                         Tag="None"
+                                                         Checked="OnCustomShadowChanged"
+                                                         Content="不显示" />
+                                            <RadioButton x:Name="CustomShadowLightRadio"
+                                                         Style="{StaticResource CompactSegmentRadioStyle}"
+                                                         GroupName="CustomIconShadow"
+                                                         Tag="Light"
+                                                         Checked="OnCustomShadowChanged"
+                                                         Content="轻" />
+                                            <RadioButton x:Name="CustomShadowHeavyRadio"
+                                                         Style="{StaticResource CompactSegmentRadioStyle}"
+                                                         GroupName="CustomIconShadow"
+                                                         Tag="Heavy"
+                                                         Checked="OnCustomShadowChanged"
+                                                         Content="重" />
+                                            <RadioButton x:Name="CustomShadowSolidRadio"
+                                                         Style="{StaticResource CompactSegmentRadioStyle}"
+                                                         GroupName="CustomIconShadow"
+                                                         Tag="Solid"
+                                                         Checked="OnCustomShadowChanged"
+                                                         Content="实心" />
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                    <Button Click="OnOpenIconsFolderClick" Content="打开图标文件夹" />
+                                    <Button Margin="8,0,0,0" Click="OnRescanIconsClick" Content="重新扫描" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -1107,21 +1473,6 @@
                 <TranslateTransform x:Name="UpdateToastTranslate" Y="-8" />
             </Border.RenderTransform>
             <StackPanel Orientation="Horizontal">
-                <Border x:Name="UpdateToastIconBackground"
-                        Width="24"
-                        Height="24"
-                        Margin="0,0,10,0"
-                        VerticalAlignment="Top"
-                        Background="#FFDCEEFF"
-                        CornerRadius="12">
-                    <TextBlock x:Name="UpdateToastIcon"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               Foreground="#FF1683FF"
-                               FontSize="13"
-                               FontWeight="Bold"
-                               Text="↻" />
-                </Border>
                 <TextBlock x:Name="UpdateToastText"
                            MaxWidth="350"
                            VerticalAlignment="Center"
