@@ -30,15 +30,17 @@ InputCue 是一个克制的 Windows 输入状态提示器。在你正在输入�
 
 把样式切换为「自定义」后，可为中文、输入法英文、美式键盘和大写锁定四个状态分别指定 PNG 图片：
 
-- 图片按标准文件名保存在程序目录的 `data/icons/` 中，更新不会丢失；
-- 未设置图片的状态继续使用内置描边样式；
-- 不符合要求的文件（无法解析、大于 10 MB 或超过 4096×4096）不会生效，设置页会给出原因；
+<p align="center">
+  <img src="./assets/readme/custom-icons.png" width="685" alt="自定义样式：为四个输入状态选择 PNG 图标">
+</p>
+
+- 支持四档阴影（不显示/轻/重/实心）；实心为硬黑描边效果，透明背景 PNG 的阴影会贴合图案轮廓；
 - 设置页的「打开图标文件夹」会创建带说明的图标文件夹；发布包的 `icons-template/` 内含内置字形的 SVG 源文件，方便照着改。
 
 ## 产品界面
 
 <p align="center">
-  <img src="./assets/readme/app-window.png" width="980" alt="InputCue 设置界面">
+  <img src="./assets/readme/app-window.png" width="806" alt="InputCue 设置界面">
 </p>
 
 设置页提供实时预览。全屏自动暂停默认开启，同应用提示默认为“300 秒后显示”，开机启动可按需启用；暂停和监听状态始终在顶部清晰可见。
