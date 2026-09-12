@@ -38,6 +38,8 @@ internal sealed class WindowsInputContextEventSource : IInputContextEventSource
         return result == 0;
     }
 
+    public void SignalChange() => Signal();
+
     public void Dispose()
     {
         if (_disposed)

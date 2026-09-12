@@ -14,6 +14,10 @@ internal sealed record RawInputContextObservation(
     TextPattern2Status TextPattern2Status,
     double DurationMilliseconds)
 {
+    internal ScreenRect? TargetBounds { get; init; }
+
+    internal bool CaretOutsideVisibleBounds { get; init; }
+
     internal static RawInputContextObservation Failure(
         ProbeIssue issue,
         double durationMilliseconds) =>

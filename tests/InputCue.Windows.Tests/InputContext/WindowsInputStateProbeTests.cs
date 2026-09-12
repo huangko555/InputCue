@@ -94,6 +94,52 @@ public sealed class WindowsInputStateProbeTests
     }
 
     [Fact]
+    public void ObserveClassifiesWechatImeAsChineseWhenOpenStatusIsOn()
+    {
+        var reader = new StubInputStateFactsReader(
+            new InputStateFacts(
+                7,
+                0x0804,
+                true,
+                HasImeContext: false,
+                DefaultImeWindow: new DefaultImeWindowFacts(true, 1, 1),
+                ActiveProfile: new InputProcessorProfileIdentity(
+                    new Guid("86598fb9-66a2-463e-b9c2-aeb906d477ad"),
+                    new Guid("607fdf85-fcc8-4dbd-a365-41296f980c9c"))));
+        var probe = new WindowsInputStateProbe(reader);
+
+        var observation = probe.Observe(42);
+
+        Assert.Equal(InputState.Chinese, observation.State);
+        Assert.Equal(
+            new Guid("86598fb9-66a2-463e-b9c2-aeb906d477ad"),
+            observation.Evidence.InputProcessorClassId);
+        Assert.Equal(
+            new Guid("607fdf85-fcc8-4dbd-a365-41296f980c9c"),
+            observation.Evidence.InputProcessorProfileId);
+    }
+
+    [Fact]
+    public void ObserveClassifiesWechatImeAsEnglishWhenOpenStatusIsOff()
+    {
+        var reader = new StubInputStateFactsReader(
+            new InputStateFacts(
+                7,
+                0x0804,
+                true,
+                HasImeContext: false,
+                DefaultImeWindow: new DefaultImeWindowFacts(true, 0, 1),
+                ActiveProfile: new InputProcessorProfileIdentity(
+                    new Guid("86598fb9-66a2-463e-b9c2-aeb906d477ad"),
+                    new Guid("607fdf85-fcc8-4dbd-a365-41296f980c9c"))));
+        var probe = new WindowsInputStateProbe(reader);
+
+        var observation = probe.Observe(42);
+
+        Assert.Equal(InputState.English, observation.State);
+    }
+
+    [Fact]
     public void ObserveKeepsUnsupportedImeLayoutsUnknown()
     {
         var reader = new StubInputStateFactsReader(

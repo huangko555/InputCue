@@ -15,6 +15,10 @@ public sealed class IndicatorSession
     private DateTimeOffset? _displayStartedAt;
     private DateTimeOffset? _displayUntil;
     private DateTimeOffset? _fadeUntil;
+    private DateTimeOffset? _idleReshowAt;
+    private DateTimeOffset? _contextLossUntil;
+    private long _pendingContextLossGeneration;
+    private IndicatorReasonCode _pendingContextLossReason;
     private DateTimeOffset? _lastInputActivityAt;
     private InputState? _lastDisplayEligibleInputState;
     private bool _textActivityPending;
@@ -27,6 +31,10 @@ public sealed class IndicatorSession
 
     public IndicatorViewState Current => _state;
 
+    public bool HasPendingDeadline =>
+        _idleReshowAt is not null ||
+        _contextLossUntil is not null;
+
     /// <summary>
     /// Applies an observation. Older generations and observations with an earlier timestamp in the
     /// current generation are ignored without changing the current view state.
@@ -36,13 +44,45 @@ public sealed class IndicatorSession
             snapshot,
             receivedAt: null,
             refreshAnchor: false,
-            suppressContextReplay: false);
+            suppressContextReplay: false,
+            deferContextLoss: false);
 
     public IndicatorViewState Observe(
         InputContextSnapshot snapshot,
         DateTimeOffset? receivedAt,
         bool refreshAnchor = false,
-        bool suppressContextReplay = false)
+        bool suppressContextReplay = false,
+        bool deferContextLoss = false) =>
+        ObserveCore(
+            snapshot,
+            receivedAt,
+            refreshAnchor,
+            suppressContextReplay,
+            deferContextLoss,
+            activateContext: false);
+
+    /// <summary>
+    /// Applies a user-initiated activation of an editable context, such as a validated pointer click.
+    /// Idle-persistent mode presents it immediately; transient mode keeps its replay rules.
+    /// </summary>
+    public IndicatorViewState ActivateContext(
+        InputContextSnapshot snapshot,
+        DateTimeOffset? receivedAt = null) =>
+        ObserveCore(
+            snapshot,
+            receivedAt,
+            refreshAnchor: true,
+            suppressContextReplay: false,
+            deferContextLoss: false,
+            activateContext: true);
+
+    private IndicatorViewState ObserveCore(
+        InputContextSnapshot snapshot,
+        DateTimeOffset? receivedAt,
+        bool refreshAnchor,
+        bool suppressContextReplay,
+        bool deferContextLoss,
+        bool activateContext)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -65,18 +105,36 @@ public sealed class IndicatorSession
         var hiddenReason = GetHiddenReason(snapshot);
         if (hiddenReason is not null)
         {
+            if (ShouldDeferContextLoss(deferContextLoss, hiddenReason.Value))
+            {
+                _contextLossUntil ??= effectiveTime + _options.ContextLossGracePeriod;
+                _pendingContextLossGeneration = snapshot.Generation;
+                _pendingContextLossReason = hiddenReason.Value;
+                return _state;
+            }
+
             Hide(snapshot.Generation, hiddenReason.Value);
             return _state;
         }
 
+        var returningFromDeferredLoss = _contextLossUntil is not null;
+        ClearPendingContextLoss();
         var inputStateChanged = _lastDisplayEligibleInputState is { } previousInputState &&
             previousInputState != snapshot.InputState;
         var contextEstablished = isNewGeneration ||
             previousContext is null ||
             !IsDisplayEligible(previousContext.Eligibility);
         _lastDisplayEligibleInputState = snapshot.InputState;
-        var shouldReplay = inputStateChanged || contextEstablished;
-        var shouldSuppressContextReplay = contextEstablished &&
+        var persistentActivation = activateContext &&
+            _options.DisplayMode is IndicatorDisplayMode.IdlePersistent;
+        var continuousReturn = returningFromDeferredLoss &&
+            suppressContextReplay &&
+            (_state.IsVisible || _idleReshowAt is not null);
+        var shouldReplay = inputStateChanged ||
+            contextEstablished && !continuousReturn ||
+            persistentActivation;
+        var shouldSuppressContextReplay = _options.DisplayMode is IndicatorDisplayMode.Transient &&
+            contextEstablished &&
             !inputStateChanged &&
             (IsContextReplaySuppressed(effectiveTime) ||
                 suppressContextReplay && !_options.AlwaysVisible);
@@ -104,6 +162,16 @@ public sealed class IndicatorSession
         return _state;
     }
 
+    private bool ShouldDeferContextLoss(
+        bool deferContextLoss,
+        IndicatorReasonCode hiddenReason) =>
+        deferContextLoss &&
+        hiddenReason is IndicatorReasonCode.ContextIneligible or
+            IndicatorReasonCode.PositionUnavailable &&
+        _options.DisplayMode is IndicatorDisplayMode.IdlePersistent &&
+        _options.ContextLossGracePeriod > TimeSpan.Zero &&
+        (_state.IsVisible || _idleReshowAt is not null);
+
     /// <summary>
     /// Applies an anonymous editing-key activity without recording the key or any resulting text.
     /// </summary>
@@ -115,10 +183,27 @@ public sealed class IndicatorSession
         }
 
         _currentTime = receivedAt;
-        AdvanceCore(receivedAt);
         _lastInputActivityAt = receivedAt;
+        if (_options.DisplayMode is IndicatorDisplayMode.IdlePersistent &&
+            _lastContext is { } context &&
+            IsIdleReshowEligible(context))
+        {
+            _idleReshowAt = receivedAt + _options.IdleReshowDelay;
+        }
+
+        AdvanceCore(receivedAt);
+
         if (_options.AlwaysVisible || !_state.IsVisible)
         {
+            return _state;
+        }
+
+        if (_options.DisplayMode is IndicatorDisplayMode.IdlePersistent)
+        {
+            Hide(
+                _state.Generation,
+                IndicatorReasonCode.InputActivityDetected,
+                preserveIdleDeadline: true);
             return _state;
         }
 
@@ -131,7 +216,10 @@ public sealed class IndicatorSession
             return _state;
         }
 
-        Hide(_state.Generation, IndicatorReasonCode.InputActivityDetected);
+        Hide(
+            _state.Generation,
+            IndicatorReasonCode.InputActivityDetected,
+            preserveIdleDeadline: true);
         return _state;
     }
 
@@ -187,6 +275,11 @@ public sealed class IndicatorSession
     private static bool IsDisplayEligible(Eligibility eligibility) =>
         eligibility is Eligibility.EditableCaret or Eligibility.EditableSelection;
 
+    private static bool IsIdleReshowEligible(InputContextSnapshot snapshot) =>
+        snapshot.Eligibility is Eligibility.EditableCaret &&
+        snapshot.InputState is not InputState.Unknown &&
+        snapshot.Anchor is { IsUsable: true };
+
     private bool IsContextReplaySuppressed(DateTimeOffset now) =>
         _lastInputActivityAt is { } lastInputActivityAt &&
         now < lastInputActivityAt + _options.ContextReplaySuppressionDuration;
@@ -196,6 +289,7 @@ public sealed class IndicatorSession
         IndicatorReasonCode reasonCode,
         DateTimeOffset now)
     {
+        ClearPendingContextLoss();
         _state = new IndicatorViewState(
             snapshot.Generation,
             IndicatorPhase.Visible,
@@ -204,9 +298,11 @@ public sealed class IndicatorSession
             1,
             reasonCode);
         _displayStartedAt = now;
+        _idleReshowAt = null;
         _textActivityPending = false;
 
-        if (_options.AlwaysVisible)
+        if (_options.AlwaysVisible ||
+            _options.DisplayMode is IndicatorDisplayMode.IdlePersistent)
         {
             _displayUntil = null;
             _fadeUntil = null;
@@ -221,17 +317,45 @@ public sealed class IndicatorSession
         AdvanceCore(now);
     }
 
-    private void Hide(long generation, IndicatorReasonCode reasonCode)
+    private void Hide(
+        long generation,
+        IndicatorReasonCode reasonCode,
+        bool preserveIdleDeadline = false)
     {
+        ClearPendingContextLoss();
         _displayStartedAt = null;
         _displayUntil = null;
         _fadeUntil = null;
+        if (!preserveIdleDeadline)
+        {
+            _idleReshowAt = null;
+        }
+
         _textActivityPending = false;
         _state = IndicatorViewState.Hidden(generation, reasonCode);
     }
 
     private void AdvanceCore(DateTimeOffset now)
     {
+        if (_contextLossUntil is { } contextLossUntil && now >= contextLossUntil)
+        {
+            var generation = _pendingContextLossGeneration;
+            var reason = _pendingContextLossReason;
+            ClearPendingContextLoss();
+            Hide(generation, reason);
+            return;
+        }
+
+        if (!_state.IsVisible &&
+            _idleReshowAt is { } idleReshowAt &&
+            now >= idleReshowAt &&
+            _lastContext is { } idleContext &&
+            IsIdleReshowEligible(idleContext))
+        {
+            Show(idleContext, IndicatorReasonCode.InputIdleElapsed, now);
+            return;
+        }
+
         if (_options.AlwaysVisible || !_state.IsVisible || _displayUntil is null || _fadeUntil is null)
         {
             return;
@@ -241,7 +365,10 @@ public sealed class IndicatorSession
             _displayStartedAt is { } displayStartedAt &&
             now >= displayStartedAt + _options.MinimumDisplayDuration)
         {
-            Hide(_state.Generation, IndicatorReasonCode.InputActivityDetected);
+            Hide(
+                _state.Generation,
+                IndicatorReasonCode.InputActivityDetected,
+                preserveIdleDeadline: true);
             return;
         }
 
@@ -264,6 +391,13 @@ public sealed class IndicatorSession
             Opacity = Math.Clamp(opacity, 0, 1),
             ReasonCode = IndicatorReasonCode.DisplayDurationElapsed,
         };
+    }
+
+    private void ClearPendingContextLoss()
+    {
+        _contextLossUntil = null;
+        _pendingContextLossGeneration = 0;
+        _pendingContextLossReason = default;
     }
 
     private static DateTimeOffset LaterOf(

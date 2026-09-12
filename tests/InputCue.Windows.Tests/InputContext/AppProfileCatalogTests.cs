@@ -109,6 +109,42 @@ public sealed class AppProfileCatalogTests
     }
 
     [Fact]
+    public void BilibiliRichTextSurfaceRequiresTheRecordedEditorShape()
+    {
+        Assert.True(AppProfileCatalog.SupportsWritableBilibiliRichTextSurface(
+            "brt-editor",
+            "Chrome",
+            ControlType.Group,
+            hasTextPattern: true));
+    }
+
+    [Theory]
+    [InlineData("other", "Chrome", true)]
+    [InlineData("brt-editor", "Other", true)]
+    [InlineData("brt-editor", "Chrome", false)]
+    public void BilibiliRichTextSurfaceRejectsNearMisses(
+        string className,
+        string frameworkId,
+        bool hasTextPattern)
+    {
+        Assert.False(AppProfileCatalog.SupportsWritableBilibiliRichTextSurface(
+            className,
+            frameworkId,
+            ControlType.Group,
+            hasTextPattern));
+    }
+
+    [Fact]
+    public void BilibiliRichTextSurfaceRejectsNonGroupControl()
+    {
+        Assert.False(AppProfileCatalog.SupportsWritableBilibiliRichTextSurface(
+            "brt-editor",
+            "Chrome",
+            ControlType.Edit,
+            hasTextPattern: true));
+    }
+
+    [Fact]
     public void FeishuDocumentSurfaceRequiresTheRecordedWritableShape()
     {
         Assert.True(AppProfileCatalog.SupportsWritableFeishuDocumentSurface(
@@ -174,6 +210,38 @@ public sealed class AppProfileCatalogTests
             "docx-selection-hidden-textarea",
             "Chrome",
             ControlType.Group));
+    }
+
+    [Fact]
+    public void HiddenFeishuSelectionHelperCanProxyItsWritableDocumentAncestor()
+    {
+        Assert.True(AppProfileCatalog.SupportsFeishuDocumentFocusProxy(
+            "docx-selection-hidden-textarea",
+            "Chrome",
+            ControlType.Edit,
+            "page-block root-block",
+            "Chrome",
+            ControlType.Group,
+            documentHasTextPattern: true));
+    }
+
+    [Theory]
+    [InlineData("other", "page-block root-block", true)]
+    [InlineData("docx-selection-hidden-textarea", "page-block", true)]
+    [InlineData("docx-selection-hidden-textarea", "page-block root-block", false)]
+    public void FeishuDocumentFocusProxyRejectsUnrecordedPairs(
+        string focusedClassName,
+        string documentClassName,
+        bool documentHasTextPattern)
+    {
+        Assert.False(AppProfileCatalog.SupportsFeishuDocumentFocusProxy(
+            focusedClassName,
+            "Chrome",
+            ControlType.Edit,
+            documentClassName,
+            "Chrome",
+            ControlType.Group,
+            documentHasTextPattern));
     }
 
     [Fact]

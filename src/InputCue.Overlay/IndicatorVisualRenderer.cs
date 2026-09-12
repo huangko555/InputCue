@@ -19,9 +19,13 @@ namespace InputCue.Overlay;
 internal sealed class IndicatorVisualRenderer
 {
     private const int WindowPaddingDip = 6;
-    private const double SolidShadowOffsetDip = 5;    private const double BadgeBaseSizeDip = 36;
+    private const double SolidShadowOffsetDip = 5;
+    private const double BadgeBaseSizeDip = 36;
     private const double BadgeBaseBorderDip = 2.5;
     private const double BadgeBaseInsetDip = 5;
+    private const double DefaultBadgeBaseInsetDip = 5;
+    private const double DefaultBadgeCornerRadiusDip = 18;
+    private const double EnglishUsGlyphVerticalScale = 0.92;
     private const double BadgeBaseShadowOffsetDip = 4;
     private const double SoftShadowPaddingDip = 5;
 
@@ -126,7 +130,7 @@ internal sealed class IndicatorVisualRenderer
 
     public void Render(InputState state)
     {
-        var customImage = _style == IndicatorStyle.Custom
+        var customImage = _style is IndicatorStyle.Custom or IndicatorStyle.Custom2
             ? _customIcons.For(state)
             : null;
         if (customImage is not null)
@@ -157,6 +161,11 @@ internal sealed class IndicatorVisualRenderer
         _badgeGlyph.Data = _style == IndicatorStyle.ShadowBadge
             ? ShadowBadgeGlyphs.For(state)
             : LightBadgeGlyphs.For(state);
+        _badgeGlyph.RenderTransformOrigin = new Point(0.5, 0.5);
+        var glyphVerticalScale = CalculateGlyphVerticalScale(_style, state);
+        _badgeGlyph.RenderTransform = glyphVerticalScale < 1
+            ? new ScaleTransform(1, glyphVerticalScale)
+            : Transform.Identity;
         if (_style == IndicatorStyle.ShadowBadge)
         {
             _badgeGlyph.Width = 64;
@@ -167,11 +176,19 @@ internal sealed class IndicatorVisualRenderer
 
         _badgeGlyph.Width = double.NaN;
         _badgeGlyph.Height = double.NaN;
-        var inset = state == InputState.EnglishUs
-            ? BadgeBaseInsetDip * 0.85
+        var baseInset = _style == IndicatorStyle.Default
+            ? DefaultBadgeBaseInsetDip
             : BadgeBaseInsetDip;
+        var inset = state == InputState.EnglishUs
+            ? baseInset * 0.85
+            : baseInset;
         _badgeGlyphViewbox.Margin = new Thickness(inset * (_badgeSizeDip / BadgeBaseSizeDip));
     }
+
+    internal static double CalculateGlyphVerticalScale(IndicatorStyle style, InputState state) =>
+        style == IndicatorStyle.Default && state == InputState.EnglishUs
+            ? EnglishUsGlyphVerticalScale
+            : 1;
 
     /// <summary>
     /// Overall width and height the host must reserve for the styled indicator:
@@ -180,6 +197,7 @@ internal sealed class IndicatorVisualRenderer
     internal static double CalculateRootSize(IndicatorStyle style, int dotSizeDip, int badgeSizeDip) => style switch
     {
         IndicatorStyle.Dot => dotSizeDip + WindowPaddingDip,
+        IndicatorStyle.Default => badgeSizeDip,
         IndicatorStyle.ShadowBadge => badgeSizeDip +
             (2 * SoftShadowPaddingDip * (badgeSizeDip / BadgeBaseSizeDip)),
         _ => badgeSizeDip + (BadgeBaseShadowOffsetDip * (badgeSizeDip / BadgeBaseSizeDip)),
@@ -197,6 +215,26 @@ internal sealed class IndicatorVisualRenderer
         }
 
         var scale = _badgeSizeDip / BadgeBaseSizeDip;
+        if (_style == IndicatorStyle.Default)
+        {
+            _badgeVisual.Width = _badgeSizeDip;
+            _badgeVisual.Height = _badgeSizeDip;
+            _badgeShadow.Visibility = Visibility.Collapsed;
+            Canvas.SetLeft(_badgeBody, 0);
+            Canvas.SetTop(_badgeBody, 0);
+            _badgeBody.Width = _badgeSizeDip;
+            _badgeBody.Height = _badgeSizeDip;
+            _badgeBody.Background = FrozenBrush("2B2D31");
+            _badgeBody.BorderBrush = FrozenBrush("A6FFFFFF");
+            _badgeBody.BorderThickness = new Thickness(Math.Max(0.75, scale));
+            _badgeBody.CornerRadius = new CornerRadius(DefaultBadgeCornerRadiusDip * scale);
+            _badgeBody.Effect = null;
+            _badgeGlyph.Fill = FrozenBrush("FFFFFF");
+            RootWidth = _badgeSizeDip;
+            RootHeight = _badgeSizeDip;
+            return;
+        }
+
         if (_style == IndicatorStyle.ShadowBadge)
         {
             var shadowPadding = SoftShadowPaddingDip * scale;
@@ -211,6 +249,7 @@ internal sealed class IndicatorVisualRenderer
             _badgeBody.Background = FrozenBrush("FCFCFC");
             _badgeBody.BorderBrush = FrozenBrush("D4D4D8");
             _badgeBody.BorderThickness = new Thickness(Math.Max(1, scale));
+            _badgeBody.CornerRadius = new CornerRadius(0);
             _badgeBody.Effect = new DropShadowEffect
             {
                 BlurRadius = 8 * scale,
@@ -226,7 +265,7 @@ internal sealed class IndicatorVisualRenderer
             return;
         }
 
-        // LightBadge and the Custom-style fallback share the outlined-card layout.
+        // LightBadge and both Custom fallbacks share the outlined-card layout.
         var shadowOffset = BadgeBaseShadowOffsetDip * scale;
         var outlinedOverallSize = CalculateRootSize(_style, _dotSizeDip, _badgeSizeDip);
 
@@ -244,6 +283,7 @@ internal sealed class IndicatorVisualRenderer
         _badgeBody.Background = FrozenBrush("FFFFFF");
         _badgeBody.BorderBrush = FrozenBrush("000000");
         _badgeBody.BorderThickness = new Thickness(BadgeBaseBorderDip * scale);
+        _badgeBody.CornerRadius = new CornerRadius(0);
         _badgeBody.Effect = null;
         _badgeGlyph.Fill = FrozenBrush("000000");
         _badgeGlyphViewbox.Margin = new Thickness(BadgeBaseInsetDip * scale);

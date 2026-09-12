@@ -466,6 +466,253 @@ public sealed class IndicatorSessionTests
     }
 
     [Fact]
+    public void IdlePersistentModeStaysVisibleUntilInputActivity()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            DisplayMode = IndicatorDisplayMode.IdlePersistent,
+            MinimumDisplayDuration = TimeSpan.FromSeconds(1),
+        });
+        _ = session.Observe(Snapshot(1, Start));
+
+        var beforeInput = session.Current;
+        var afterInput = session.ObserveInputActivity(Start.AddMilliseconds(1));
+
+        Assert.True(beforeInput.IsVisible);
+        Assert.False(afterInput.IsVisible);
+        Assert.Equal(IndicatorReasonCode.InputActivityDetected, afterInput.ReasonCode);
+    }
+
+    [Fact]
+    public void IdlePersistentModeReturnsAfterConfiguredIdleDelay()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            DisplayMode = IndicatorDisplayMode.IdlePersistent,
+            IdleReshowDelay = TimeSpan.FromSeconds(3),
+            MinimumDisplayDuration = TimeSpan.Zero,
+        });
+        _ = session.Observe(Snapshot(1, Start));
+        _ = session.ObserveInputActivity(Start.AddMilliseconds(100));
+
+        var beforeIdle = session.Advance(Start.AddMilliseconds(3099));
+        var atIdle = session.Advance(Start.AddMilliseconds(3100));
+
+        Assert.False(beforeIdle.IsVisible);
+        Assert.True(atIdle.IsVisible);
+        Assert.Equal(IndicatorReasonCode.InputIdleElapsed, atIdle.ReasonCode);
+        Assert.Equal(Caret, atIdle.Anchor);
+    }
+
+    [Fact]
+    public void IdlePersistentModeShowsANewEditableContextImmediatelyAfterInput()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            DisplayMode = IndicatorDisplayMode.IdlePersistent,
+            IdleReshowDelay = TimeSpan.FromSeconds(3),
+            ContextReplaySuppressionDuration = TimeSpan.FromMilliseconds(1500),
+            MinimumDisplayDuration = TimeSpan.Zero,
+        });
+        _ = session.Observe(Snapshot(1, Start));
+        _ = session.ObserveInputActivity(Start.AddMilliseconds(100));
+        Assert.True(session.HasPendingDeadline);
+
+        var afterClick = session.Observe(Snapshot(2, Start.AddMilliseconds(200)));
+
+        Assert.True(afterClick.IsVisible);
+        Assert.Equal(IndicatorReasonCode.ContextEstablished, afterClick.ReasonCode);
+    }
+
+    [Fact]
+    public void IdlePersistentModeReactivatesTheSameEditableContextAfterClick()
+    {
+        var movedCaret = new ScreenRect(140, 120, 2, 20);
+        var session = new IndicatorSession(Transient with
+        {
+            DisplayMode = IndicatorDisplayMode.IdlePersistent,
+            IdleReshowDelay = TimeSpan.FromSeconds(3),
+            MinimumDisplayDuration = TimeSpan.Zero,
+        });
+        _ = session.Observe(Snapshot(1, Start));
+        _ = session.ObserveInputActivity(Start.AddMilliseconds(100));
+
+        var afterClick = session.ActivateContext(
+            Snapshot(1, Start.AddMilliseconds(200), anchor: movedCaret),
+            Start.AddMilliseconds(200));
+
+        Assert.True(afterClick.IsVisible);
+        Assert.Equal(movedCaret, afterClick.Anchor);
+        Assert.Equal(IndicatorReasonCode.ContextEstablished, afterClick.ReasonCode);
+    }
+
+    [Fact]
+    public void IdlePersistentModeKeepsTheIndicatorVisibleAcrossATransientContextLoss()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            DisplayMode = IndicatorDisplayMode.IdlePersistent,
+            ContextLossGracePeriod = TimeSpan.FromMilliseconds(1200),
+            MinimumDisplayDuration = TimeSpan.Zero,
+        });
+        var initial = session.Observe(Snapshot(1, Start));
+
+        var duringLoss = session.Observe(
+            Snapshot(2, Start.AddMilliseconds(100), Eligibility.NoEditableFocus),
+            receivedAt: null,
+            deferContextLoss: true);
+        var returned = session.Observe(
+            Snapshot(3, Start.AddMilliseconds(900)),
+            receivedAt: null,
+            refreshAnchor: true,
+            suppressContextReplay: true);
+
+        Assert.True(initial.IsVisible);
+        Assert.True(duringLoss.IsVisible);
+        Assert.True(returned.IsVisible);
+        Assert.Equal(initial.ReasonCode, returned.ReasonCode);
+    }
+
+    [Fact]
+    public void DeferredContextLossEventuallyHidesWhenTheEditorDoesNotReturn()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            DisplayMode = IndicatorDisplayMode.IdlePersistent,
+            ContextLossGracePeriod = TimeSpan.FromMilliseconds(1200),
+            MinimumDisplayDuration = TimeSpan.Zero,
+        });
+        _ = session.Observe(Snapshot(1, Start));
+        _ = session.Observe(
+            Snapshot(2, Start.AddMilliseconds(100), Eligibility.NoEditableFocus),
+            receivedAt: null,
+            deferContextLoss: true);
+
+        var beforeDeadline = session.Advance(Start.AddMilliseconds(1299));
+        var atDeadline = session.Advance(Start.AddMilliseconds(1300));
+
+        Assert.True(beforeDeadline.IsVisible);
+        Assert.False(atDeadline.IsVisible);
+        Assert.Equal(IndicatorReasonCode.ContextIneligible, atDeadline.ReasonCode);
+    }
+
+    [Fact]
+    public void IdlePersistentModeKeepsTheIndicatorVisibleWhenCaretPositionIsTemporarilyUnknown()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            DisplayMode = IndicatorDisplayMode.IdlePersistent,
+            ContextLossGracePeriod = TimeSpan.FromMilliseconds(1200),
+            MinimumDisplayDuration = TimeSpan.Zero,
+        });
+        var initial = session.Observe(Snapshot(1, Start));
+
+        var missingCaret = session.Observe(
+            Snapshot(1, Start.AddMilliseconds(100), Eligibility.PositionUnknown),
+            receivedAt: null,
+            deferContextLoss: true);
+        var recovered = session.Observe(
+            Snapshot(1, Start.AddMilliseconds(200)),
+            receivedAt: null,
+            refreshAnchor: true,
+            suppressContextReplay: true);
+
+        Assert.True(initial.IsVisible);
+        Assert.True(missingCaret.IsVisible);
+        Assert.True(recovered.IsVisible);
+        Assert.Equal(initial.ReasonCode, recovered.ReasonCode);
+    }
+
+    [Fact]
+    public void IdlePersistentModePreservesIdleReshowAcrossATransientHiddenObservation()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            DisplayMode = IndicatorDisplayMode.IdlePersistent,
+            IdleReshowDelay = TimeSpan.FromSeconds(3),
+            ContextLossGracePeriod = TimeSpan.FromMilliseconds(1200),
+            MinimumDisplayDuration = TimeSpan.Zero,
+        });
+        _ = session.Observe(Snapshot(1, Start));
+        _ = session.ObserveInputActivity(Start.AddMilliseconds(100));
+
+        var duringLoss = session.Observe(
+            Snapshot(2, Start.AddMilliseconds(200), Eligibility.NoEditableFocus),
+            receivedAt: null,
+            deferContextLoss: true);
+        var returned = session.Observe(
+            Snapshot(3, Start.AddMilliseconds(900)),
+            receivedAt: null,
+            refreshAnchor: true,
+            suppressContextReplay: true);
+        var beforeIdle = session.Advance(Start.AddMilliseconds(3099));
+        var atIdle = session.Advance(Start.AddMilliseconds(3100));
+
+        Assert.False(duringLoss.IsVisible);
+        Assert.False(returned.IsVisible);
+        Assert.False(beforeIdle.IsVisible);
+        Assert.True(atIdle.IsVisible);
+        Assert.Equal(IndicatorReasonCode.InputIdleElapsed, atIdle.ReasonCode);
+        Assert.False(session.HasPendingDeadline);
+    }
+
+    [Fact]
+    public void RepeatedInputActivityExtendsIdleDelay()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            DisplayMode = IndicatorDisplayMode.IdlePersistent,
+            IdleReshowDelay = TimeSpan.FromSeconds(3),
+            MinimumDisplayDuration = TimeSpan.Zero,
+        });
+        _ = session.Observe(Snapshot(1, Start));
+        _ = session.ObserveInputActivity(Start.AddMilliseconds(100));
+        _ = session.ObserveInputActivity(Start.AddSeconds(2));
+
+        var originalDeadline = session.Advance(Start.AddMilliseconds(3100));
+        var extendedDeadline = session.Advance(Start.AddSeconds(5));
+
+        Assert.False(originalDeadline.IsVisible);
+        Assert.True(extendedDeadline.IsVisible);
+    }
+
+    [Fact]
+    public void IdlePersistentModeDoesNotReturnForEditableSelection()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            DisplayMode = IndicatorDisplayMode.IdlePersistent,
+            IdleReshowDelay = TimeSpan.FromSeconds(3),
+            MinimumDisplayDuration = TimeSpan.Zero,
+        });
+        _ = session.Observe(Snapshot(1, Start, Eligibility.EditableSelection));
+        _ = session.ObserveInputActivity(Start.AddMilliseconds(100));
+
+        var state = session.Advance(Start.AddSeconds(10));
+
+        Assert.False(state.IsVisible);
+    }
+
+    [Fact]
+    public void LosingEditableContextCancelsIdleReturn()
+    {
+        var session = new IndicatorSession(Transient with
+        {
+            DisplayMode = IndicatorDisplayMode.IdlePersistent,
+            IdleReshowDelay = TimeSpan.FromSeconds(3),
+            MinimumDisplayDuration = TimeSpan.Zero,
+        });
+        _ = session.Observe(Snapshot(1, Start));
+        _ = session.ObserveInputActivity(Start.AddMilliseconds(100));
+        _ = session.Observe(Snapshot(2, Start.AddSeconds(1), Eligibility.NoEditableFocus));
+
+        var state = session.Advance(Start.AddSeconds(10));
+
+        Assert.False(state.IsVisible);
+        Assert.Equal(IndicatorReasonCode.ContextIneligible, state.ReasonCode);
+    }
+
+    [Fact]
     public void ZeroFadeDurationHidesAtDisplayDeadline()
     {
         var session = new IndicatorSession(Transient with { FadeDuration = TimeSpan.Zero });
@@ -484,9 +731,18 @@ public sealed class IndicatorSessionTests
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             new IndicatorSession(Transient with { FadeDuration = TimeSpan.FromMilliseconds(-1) }));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new IndicatorSession(Transient with
+            {
+                ContextLossGracePeriod = TimeSpan.FromMilliseconds(-1),
+            }));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
             new IndicatorSession(Transient with { MinimumDisplayDuration = TimeSpan.FromMilliseconds(-1) }));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             new IndicatorSession(Transient with { ContextReplaySuppressionDuration = TimeSpan.FromMilliseconds(-1) }));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new IndicatorSession(Transient with { IdleReshowDelay = TimeSpan.FromMilliseconds(-1) }));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new IndicatorSession(Transient with { DisplayMode = (IndicatorDisplayMode)99 }));
     }
 
     [Theory]

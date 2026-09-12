@@ -9,7 +9,7 @@ public sealed record InputCueSettings(
     IndicatorPlacement Placement = IndicatorPlacement.BottomRight,
     int HorizontalOffsetDip = 0,
     int VerticalOffsetDip = 0,
-    int IndicatorSizeDip = 12,
+    int IndicatorSizeDip = 36,
     IndicatorStyle Style = IndicatorStyle.Dot,
     int LightBadgeSizeDip = 36,
     string ChineseDotColor = "E5534B",
@@ -23,17 +23,25 @@ public sealed record InputCueSettings(
     CustomIconShadowMode CustomIconShadow = CustomIconShadowMode.None,
     AppStayPromptMode SameAppPromptMode = AppStayPromptMode.AfterDelay,
     int SameAppPromptDelaySeconds = 300,
-    bool FullScreenAutoPause = true)
+    bool FullScreenAutoPause = true,
+    IndicatorDisplayMode DisplayMode = IndicatorDisplayMode.IdlePersistent,
+    int IdleReshowDelaySeconds = 3,
+    IndicatorAppearanceSettings? DefaultAppearance = null,
+    IndicatorAppearanceSettings? Custom2Appearance = null,
+    CustomIconShadowMode Custom2IconShadow = CustomIconShadowMode.None)
 {
     public const IndicatorPlacement DefaultPlacement = IndicatorPlacement.BottomRight;
+    public const IndicatorPlacement DefaultStylePlacement = IndicatorPlacement.Top;
     public const int MinimumOffsetDip = -40;
     public const int MaximumOffsetDip = 40;
     public const int MinimumIndicatorSizeDip = 6;
-    public const int MaximumIndicatorSizeDip = 32;
-    public const int DefaultIndicatorSizeDip = 12;
-    public const int MinimumLightBadgeSizeDip = 24;
+    public const int MaximumIndicatorSizeDip = 64;
+    public const int DefaultIndicatorSizeDip = 36;
+    public const int MinimumLightBadgeSizeDip = 1;
     public const int MaximumLightBadgeSizeDip = 64;
     public const int DefaultLightBadgeSizeDip = 36;
+    public const int DefaultStyleBadgeSizeDip = 22;
+    public const int DefaultStyleVerticalOffsetDip = 4;
     public const string DefaultChineseDotColor = "E5534B";
     public const string DefaultEnglishDotColor = "2F7FD6";
     public const string DefaultEnglishUsDotColor = "D99000";
@@ -41,11 +49,26 @@ public sealed record InputCueSettings(
     public const int DefaultSameAppPromptDelaySeconds = 300;
     public const int MinimumSameAppPromptDelaySeconds = 10;
     public const int MaximumSameAppPromptDelaySeconds = 3600;
+    public const int DefaultIdleReshowDelaySeconds = 3;
+    public const int MinimumIdleReshowDelaySeconds = 1;
+    public const int MaximumIdleReshowDelaySeconds = 60;
 
     public static InputCueSettings Default { get; } = new(
         DisplayDurationMilliseconds: 1000,
         MinimumDisplayDurationMilliseconds: 300,
-        Style: IndicatorStyle.LightBadge);
+        Placement: DefaultStylePlacement,
+        VerticalOffsetDip: DefaultStyleVerticalOffsetDip,
+        Style: IndicatorStyle.Default,
+        LightBadgeSizeDip: DefaultStyleBadgeSizeDip,
+        DotAppearance: DefaultAppearanceFor(IndicatorStyle.Dot),
+        LightBadgeAppearance: DefaultAppearanceFor(IndicatorStyle.LightBadge),
+        ShadowBadgeAppearance: DefaultAppearanceFor(IndicatorStyle.ShadowBadge),
+        CustomAppearance: DefaultAppearanceFor(IndicatorStyle.Custom),
+        DefaultAppearance: DefaultAppearanceFor(IndicatorStyle.Default),
+        Custom2Appearance: DefaultAppearanceFor(IndicatorStyle.Custom2));
+
+    public static IndicatorAppearanceSettings DefaultAppearanceFor(IndicatorStyle style) =>
+        IndicatorStyleCatalog.Get(style).DefaultAppearance;
 
     [JsonIgnore]
     public bool IsValid =>
@@ -65,10 +88,16 @@ public sealed record InputCueSettings(
         IsValidAppearance(LightBadgeAppearance, IndicatorStyle.LightBadge) &&
         IsValidAppearance(ShadowBadgeAppearance, IndicatorStyle.ShadowBadge) &&
         IsValidAppearance(CustomAppearance, IndicatorStyle.Custom) &&
+        IsValidAppearance(DefaultAppearance, IndicatorStyle.Default) &&
+        IsValidAppearance(Custom2Appearance, IndicatorStyle.Custom2) &&
         Enum.IsDefined(CustomIconShadow) &&
+        Enum.IsDefined(Custom2IconShadow) &&
         Enum.IsDefined(SameAppPromptMode) &&
         SameAppPromptDelaySeconds is >= MinimumSameAppPromptDelaySeconds
-            and <= MaximumSameAppPromptDelaySeconds;
+            and <= MaximumSameAppPromptDelaySeconds &&
+        Enum.IsDefined(DisplayMode) &&
+        IdleReshowDelaySeconds is >= MinimumIdleReshowDelaySeconds
+            and <= MaximumIdleReshowDelaySeconds;
 
     public IndicatorAppearanceSettings GetAppearance(IndicatorStyle style) => style switch
     {
@@ -92,6 +121,16 @@ public sealed record InputCueSettings(
             HorizontalOffsetDip,
             VerticalOffsetDip,
             LightBadgeSizeDip),
+        IndicatorStyle.Default => DefaultAppearance ?? new(
+            Placement,
+            HorizontalOffsetDip,
+            VerticalOffsetDip,
+            LightBadgeSizeDip),
+        IndicatorStyle.Custom2 => Custom2Appearance ?? new(
+            Placement,
+            HorizontalOffsetDip,
+            VerticalOffsetDip,
+            LightBadgeSizeDip),
         _ => throw new ArgumentOutOfRangeException(nameof(style), style, null),
     };
 
@@ -102,6 +141,7 @@ public sealed record InputCueSettings(
         IndicatorAppearanceSettings? appearance,
         IndicatorStyle style) =>
         appearance is null ||
+        Enum.IsDefined(appearance.TransitionAnimation) &&
         Enum.IsDefined(appearance.Placement) &&
         appearance.HorizontalOffsetDip is >= MinimumOffsetDip and <= MaximumOffsetDip &&
         appearance.VerticalOffsetDip is >= MinimumOffsetDip and <= MaximumOffsetDip &&
@@ -117,4 +157,5 @@ public sealed record IndicatorAppearanceSettings(
     IndicatorPlacement Placement,
     int HorizontalOffsetDip,
     int VerticalOffsetDip,
-    int SizeDip);
+    int SizeDip,
+    IndicatorTransitionAnimation TransitionAnimation = IndicatorTransitionAnimation.None);

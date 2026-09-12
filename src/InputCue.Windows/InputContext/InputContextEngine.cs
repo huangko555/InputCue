@@ -10,7 +10,9 @@ public sealed class InputContextEngine : IDisposable
     private static readonly TimeSpan CircuitCooldown = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan EventDebounceInterval = TimeSpan.FromMilliseconds(40);
     private static readonly TimeSpan MinimumEventObservationInterval = TimeSpan.FromMilliseconds(150);
+    private static readonly TimeSpan RequestedObservationSettleInterval = TimeSpan.FromMilliseconds(25);
     private static readonly TimeSpan InputStateRefreshInterval = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan CaretTrackingInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan PositionRetryInterval = TimeSpan.FromMilliseconds(75);
     private static readonly TimeSpan ContextReturnWindow = TimeSpan.FromMilliseconds(1200);
     private static readonly TimeSpan QueryTimeout = TimeSpan.FromMilliseconds(250);
@@ -20,9 +22,30 @@ public sealed class InputContextEngine : IDisposable
     private readonly ObservationQueryRunner _queryRunner;
     private readonly IInputContextRuntime _runtime;
     private readonly TimeSpan _sampleInterval;
+    private IInputContextEventSource? _activeEventSource;
+    private bool _caretTrackingEnabled;
+    private int _requestedObservationPending;
     private bool _disposed;
 
     internal int QueryWorkerCreationCount => _queryRunner.WorkerCreationCount;
+
+    /// <summary>
+    /// Enables faster full observations while an editable Caret indicator is visible.
+    /// The existing single-worker timeout and circuit breaker continue to bound provider cost.
+    /// </summary>
+    public void SetCaretTrackingEnabled(bool enabled) =>
+        Volatile.Write(ref _caretTrackingEnabled, enabled);
+
+    /// <summary>
+    /// Requests one full observation through the existing event-fed probe loop.
+    /// The request does not enable continuous Caret tracking or add polling.
+    /// </summary>
+    public void RequestObservation()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        Interlocked.Exchange(ref _requestedObservationPending, 1);
+        Volatile.Read(ref _activeEventSource)?.SignalChange();
+    }
 
     public InputContextEngine(TimeSpan? sampleInterval = null)
         : this(
@@ -100,7 +123,7 @@ public sealed class InputContextEngine : IDisposable
     {
         var refreshTarget = RawInputContextObservation.Failure(ProbeIssue.SourceUnavailable, 0);
         var contextReturnTracker = new ContextReturnTracker(ContextReturnWindow);
-        ObservationFingerprint? previousFingerprint = null;
+        RawInputContextObservation? previousTarget = null;
         RawInputContextObservation? currentObservation = null;
         InputContextSnapshot? currentSnapshot = null;
         long generation = 0;
@@ -109,10 +132,13 @@ public sealed class InputContextEngine : IDisposable
         var positionStabilizationCount = 0;
         var isPositionStabilizationObservation = false;
         var needsFullObservation = true;
+        IInputContextEventSource? activeEventSource = null;
 
         try
         {
             using var eventSource = _runtime.CreateEventSource();
+            activeEventSource = eventSource;
+            Volatile.Write(ref _activeEventSource, eventSource);
             while (!cancellationToken.IsCancellationRequested)
             {
                 if (needsFullObservation)
@@ -128,26 +154,31 @@ public sealed class InputContextEngine : IDisposable
                         currentObservation.Target.ProcessId == Environment.ProcessId)
                     {
                         contextReturnTracker.Reset();
-                        previousFingerprint = currentObservation.Fingerprint;
+                        previousTarget = currentObservation;
                         currentSnapshot = null;
                     }
                     else
                     {
-                        var targetChanged = currentObservation.Fingerprint != previousFingerprint;
+                        var targetChanged = !InputTargetContinuity.IsSameTarget(
+                            currentObservation,
+                            previousTarget);
                         if (targetChanged)
                         {
                             generation = checked(generation + 1);
-                            previousFingerprint = currentObservation.Fingerprint;
                             positionRetryCount = 0;
                             positionStabilizationCount = wasPositionStabilizationObservation
                                 ? PositionRetryLimit
                                 : 0;
                         }
 
+                        previousTarget = currentObservation;
+
                         currentSnapshot = Classify(currentObservation, generation);
                         var suppressContextReplay = contextReturnTracker.Observe(
                             currentObservation,
                             currentSnapshot);
+                        var deferContextLoss = contextReturnTracker.IsContextLossPending &&
+                            !currentObservation.CaretOutsideVisibleBounds;
                         var isSameTargetStabilization =
                             wasPositionStabilizationObservation && !targetChanged;
                         if (!isSameTargetStabilization ||
@@ -157,12 +188,22 @@ public sealed class InputContextEngine : IDisposable
                                 currentObservation,
                                 currentSnapshot,
                                 isSameTargetStabilization,
-                                suppressContextReplay));
+                                suppressContextReplay,
+                                deferContextLoss));
                         }
                     }
                 }
 
-                var untilFullObservation = _sampleInterval -
+                var shouldTrackCaret = Volatile.Read(ref _caretTrackingEnabled) &&
+                    currentSnapshot?.Eligibility is Eligibility.EditableCaret;
+                var shouldTrackOffscreenCaret =
+                    currentObservation?.CaretOutsideVisibleBounds is true &&
+                    currentSnapshot?.Eligibility is Eligibility.PositionUnknown;
+                var fullObservationInterval = (shouldTrackCaret || shouldTrackOffscreenCaret) &&
+                    CaretTrackingInterval < _sampleInterval
+                        ? CaretTrackingInterval
+                        : _sampleInterval;
+                var untilFullObservation = fullObservationInterval -
                     Stopwatch.GetElapsedTime(lastFullObservationAt);
                 if (untilFullObservation <= TimeSpan.Zero)
                 {
@@ -211,8 +252,18 @@ public sealed class InputContextEngine : IDisposable
                 var eventRaised = eventSource.WaitForChange(waitInterval, cancellationToken);
                 if (eventRaised)
                 {
-                    CoalesceChanges(eventSource, cancellationToken);
-                    WaitForEventObservationBudget(lastFullObservationAt, cancellationToken);
+                    var isRequestedObservation =
+                        Interlocked.Exchange(ref _requestedObservationPending, 0) != 0;
+                    if (isRequestedObservation)
+                    {
+                        WaitForRequestedObservationSettle(cancellationToken);
+                    }
+                    else
+                    {
+                        CoalesceChanges(eventSource, cancellationToken);
+                        WaitForEventObservationBudget(lastFullObservationAt, cancellationToken);
+                    }
+
                     positionRetryCount = 0;
                     needsFullObservation = true;
                     continue;
@@ -282,6 +333,14 @@ public sealed class InputContextEngine : IDisposable
         }
         finally
         {
+            if (activeEventSource is not null)
+            {
+                _ = Interlocked.CompareExchange(
+                    ref _activeEventSource,
+                    null,
+                    activeEventSource);
+            }
+
             writer.TryComplete();
         }
     }
@@ -307,7 +366,8 @@ public sealed class InputContextEngine : IDisposable
         RawInputContextObservation observation,
         InputContextSnapshot snapshot,
         bool isPositionStabilization = false,
-        bool suppressContextReplay = false) =>
+        bool suppressContextReplay = false,
+        bool deferContextLoss = false) =>
         new(
             snapshot,
             observation.Target,
@@ -323,7 +383,8 @@ public sealed class InputContextEngine : IDisposable
             observation.DurationMilliseconds,
             observation.InputStateEvidence,
             isPositionStabilization,
-            suppressContextReplay);
+            suppressContextReplay,
+            deferContextLoss);
 
     private static void CoalesceChanges(
         IInputContextEventSource eventSource,
@@ -364,6 +425,14 @@ public sealed class InputContextEngine : IDisposable
         }
 
         if (cancellationToken.WaitHandle.WaitOne(remaining))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+    }
+
+    private static void WaitForRequestedObservationSettle(CancellationToken cancellationToken)
+    {
+        if (cancellationToken.WaitHandle.WaitOne(RequestedObservationSettleInterval))
         {
             cancellationToken.ThrowIfCancellationRequested();
         }

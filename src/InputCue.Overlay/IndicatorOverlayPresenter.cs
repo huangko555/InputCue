@@ -20,6 +20,7 @@ public sealed class IndicatorOverlayPresenter : IDisposable
         int verticalOffsetDip,
         int indicatorSizeDip,
         int lightBadgeSizeDip,
+        IndicatorTransitionAnimation transitionAnimation,
         string chineseDotColor,
         string englishDotColor,
         string englishUsDotColor,
@@ -33,6 +34,7 @@ public sealed class IndicatorOverlayPresenter : IDisposable
             verticalOffsetDip,
             indicatorSizeDip,
             lightBadgeSizeDip,
+            transitionAnimation,
             chineseDotColor,
             englishDotColor,
             englishUsDotColor,
@@ -52,17 +54,20 @@ public sealed class IndicatorOverlayPresenter : IDisposable
         _window.UpdateCustomShadow(mode);
     }
 
-    public void Update(IndicatorViewState state)
+    public void Update(
+        IndicatorViewState state,
+        bool targetChanged = false,
+        bool contextActivated = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(state);
-        _window.Render(state);
+        _window.Render(state, targetChanged, contextActivated);
     }
 
     public void Hide()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        _window.Hide();
+        _window.HideIndicator();
     }
 
     public void Dispose()

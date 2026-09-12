@@ -15,4 +15,5 @@ public sealed record InputContextDiagnostic(
     double DurationMilliseconds,
     InputStateEvidence? InputStateEvidence = null,
     bool IsPositionStabilization = false,
-    bool SuppressContextReplay = false);
+    bool SuppressContextReplay = false,
+    bool DeferContextLoss = false);

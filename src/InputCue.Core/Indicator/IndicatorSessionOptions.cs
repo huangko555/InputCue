@@ -8,9 +8,15 @@ public sealed record IndicatorSessionOptions(
     TimeSpan FadeDuration,
     bool AlwaysVisible = false)
 {
+    public IndicatorDisplayMode DisplayMode { get; init; } = IndicatorDisplayMode.Transient;
+
+    public TimeSpan IdleReshowDelay { get; init; } = TimeSpan.FromSeconds(3);
+
     public TimeSpan MinimumDisplayDuration { get; init; } = TimeSpan.FromMilliseconds(300);
 
     public TimeSpan ContextReplaySuppressionDuration { get; init; } = TimeSpan.FromMilliseconds(1500);
+
+    public TimeSpan ContextLossGracePeriod { get; init; } = TimeSpan.FromMilliseconds(1200);
 
     public static IndicatorSessionOptions Default { get; } = new(
         TimeSpan.FromSeconds(1),
@@ -42,12 +48,36 @@ public sealed record IndicatorSessionOptions(
                 "Minimum display duration cannot be negative.");
         }
 
+        if (!Enum.IsDefined(DisplayMode))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(DisplayMode),
+                DisplayMode,
+                "Display mode must be defined.");
+        }
+
+        if (IdleReshowDelay < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(IdleReshowDelay),
+                IdleReshowDelay,
+                "Idle reshow delay cannot be negative.");
+        }
+
         if (ContextReplaySuppressionDuration < TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(ContextReplaySuppressionDuration),
                 ContextReplaySuppressionDuration,
                 "Context replay suppression duration cannot be negative.");
+        }
+
+        if (ContextLossGracePeriod < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(ContextLossGracePeriod),
+                ContextLossGracePeriod,
+                "Context loss grace period cannot be negative.");
         }
     }
 }

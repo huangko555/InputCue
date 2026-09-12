@@ -36,8 +36,8 @@ internal sealed class WindowsInputContextProbe : IDisposable
                 return Failure(foregroundWindow, threadInfo.FocusWindow, ProbeIssue.SourceUnavailable, startedAt);
             }
 
-            var current = focusedElement.Current;
-            var focusedProcessId = current.ProcessId;
+            var focusedCurrent = focusedElement.Current;
+            var focusedProcessId = focusedCurrent.ProcessId;
             var focusWindow = threadInfo.FocusWindow;
             var automationIdentity = WindowsObservationIdentity.AutomationIdentity(focusedElement);
 
@@ -67,19 +67,45 @@ internal sealed class WindowsInputContextProbe : IDisposable
                 }
             }
 
-            var textPattern = GetPattern<TextPattern>(focusedElement, TextPattern.Pattern);
-            var valuePattern = GetPattern<ValuePattern>(focusedElement, ValuePattern.Pattern);
+            var (probeElement, isFeishuDocumentFocusProxy) = ResolveProbeElement(
+                focusedElement,
+                focusedCurrent);
+            var current = probeElement.Current;
+            var targetBounds = ToScreenRect(current.BoundingRectangle);
+            var windowBounds = WindowBounds(foregroundWindow);
+            var textPattern = GetPattern<TextPattern>(probeElement, TextPattern.Pattern);
+            var valuePattern = GetPattern<ValuePattern>(probeElement, ValuePattern.Pattern);
             var isReadOnly = ReadOnlyState(textPattern, valuePattern);
             var processName = ProcessName(focusedProcessId);
-            var hasBitableActiveEditorAncestor = HasBitableActiveEditorAncestor(focusedElement);
-            var hasFeishuChatParentShape = HasFeishuChatParentShape(focusedElement);
-            var bitableEditorAnchor = TryGetFeishuBitableEditorAnchor(
-                focusedElement,
+            var isFeishuDocumentSurface = isFeishuDocumentFocusProxy ||
+                AppProfileCatalog.SupportsWritableFeishuDocumentSurface(
+                    current.ClassName,
+                    current.FrameworkId,
+                    current.ControlType,
+                    textPattern is not null);
+            var visibleBounds = AnchorVisibilityPolicy.ResolveVisibleBounds(
+                windowBounds,
+                targetBounds,
+                current.IsOffscreen,
+                isFeishuDocumentSurface
+                    ? FeishuDocumentVerticalClippingBounds(probeElement)
+                    : null);
+            var hasBitableActiveEditorAncestor = HasBitableActiveEditorAncestor(probeElement);
+            var hasFeishuChatParentShape = HasFeishuChatParentShape(probeElement);
+            var rawBitableEditorAnchor = TryGetFeishuBitableEditorAnchor(
+                probeElement,
                 hasBitableActiveEditorAncestor,
                 textPattern is not null);
-            var sheetCellAnchor = TryGetFeishuSheetCellAnchor(focusedElement);
-            var hasFeishuSheetAncestorShape = sheetCellAnchor is not null;
-            var hasEditableFocus = current.HasKeyboardFocus &&
+            var bitableEditorAnchor = AnchorVisibilityPolicy.KeepVisible(
+                rawBitableEditorAnchor,
+                visibleBounds);
+            var rawSheetCellAnchor = TryGetFeishuSheetCellAnchor(probeElement);
+            var sheetCellAnchor = AnchorVisibilityPolicy.KeepVisible(
+                rawSheetCellAnchor,
+                visibleBounds);
+            var hasFeishuSheetAncestorShape = rawSheetCellAnchor is not null;
+            var hasEditableFocus = (current.HasKeyboardFocus ||
+                    isFeishuDocumentFocusProxy && focusedCurrent.HasKeyboardFocus) &&
                 current.IsEnabled &&
                 isReadOnly is false &&
                 !AppProfileCatalog.IsHiddenFeishuSelectionHelper(
@@ -105,11 +131,12 @@ internal sealed class WindowsInputContextProbe : IDisposable
                      current.FrameworkId,
                      current.ControlType,
                      textPattern is not null) ||
-                 AppProfileCatalog.SupportsWritableFeishuDocumentSurface(
+                 AppProfileCatalog.SupportsWritableBilibiliRichTextSurface(
                      current.ClassName,
                      current.FrameworkId,
                      current.ControlType,
                      textPattern is not null) ||
+                 isFeishuDocumentSurface ||
                  AppProfileCatalog.SupportsWritableFeishuSheetSurface(
                      current.ClassName,
                      current.FrameworkId,
@@ -131,22 +158,27 @@ internal sealed class WindowsInputContextProbe : IDisposable
                      hasFeishuChatParentShape));
             var textObservation = ObserveText(textPattern, includeSelectionCaret: hasEditableFocus);
             var shouldProbeCaret = hasEditableFocus;
-            var textPattern2 = shouldProbeCaret
+            var textPattern2 = shouldProbeCaret && !isFeishuDocumentFocusProxy
                 ? _textPattern2CaretProbe.TryGetCaret()
                 : new NativeTextPattern2CaretProbe.NativeCaretResult(
                     null,
                     TextPattern2Status.NotAttempted);
-            var requiresCaretShape = textObservation.HasSelection is true;
-            ScreenRect? textPattern2Caret = shouldProbeCaret &&
-                textPattern2.Caret is { } nativeCaret &&
-                (!requiresCaretShape || IsCaretLike(nativeCaret))
+            ScreenRect? rawTextPattern2Caret = shouldProbeCaret &&
+                CaretAnchorPolicy.KeepCaretLike(textPattern2.Caret) is { } nativeCaret
                     ? nativeCaret
                     : null;
-            ScreenRect? textPatternCaret = shouldProbeCaret &&
-                textObservation.Caret is { } managedCaret &&
-                (!requiresCaretShape || IsCaretLike(managedCaret))
+            var textPattern2Caret = FeishuDocumentCaretPolicy.KeepUnclamped(
+                AnchorVisibilityPolicy.KeepVisible(rawTextPattern2Caret, visibleBounds),
+                visibleBounds,
+                isFeishuDocumentSurface);
+            ScreenRect? rawTextPatternCaret = shouldProbeCaret &&
+                CaretAnchorPolicy.KeepCaretLike(textObservation.Caret) is { } managedCaret
                     ? managedCaret
                     : null;
+            var textPatternCaret = FeishuDocumentCaretPolicy.KeepUnclamped(
+                AnchorVisibilityPolicy.KeepVisible(rawTextPatternCaret, visibleBounds),
+                visibleBounds,
+                isFeishuDocumentSurface);
             var uiAutomationCaret = bitableEditorAnchor ?? sheetCellAnchor ?? textPattern2Caret ?? textPatternCaret;
             var uiAutomationCaretMethod = bitableEditorAnchor is not null || sheetCellAnchor is not null
                 ? UiAutomationCaretMethod.TextPattern
@@ -155,10 +187,35 @@ internal sealed class WindowsInputContextProbe : IDisposable
                 : textPatternCaret is not null
                     ? UiAutomationCaretMethod.TextPattern
                 : UiAutomationCaretMethod.None;
-            var win32Caret = shouldProbeCaret ? Win32Caret(threadInfo) : null;
-            var msaaCaret = shouldProbeCaret && bitableEditorAnchor is null && sheetCellAnchor is null
+            var rawWin32Caret = shouldProbeCaret ? Win32Caret(threadInfo) : null;
+            var win32Caret = shouldProbeCaret
+                ? FeishuDocumentCaretPolicy.KeepUnclamped(
+                    AnchorVisibilityPolicy.KeepVisible(rawWin32Caret, visibleBounds),
+                    visibleBounds,
+                    isFeishuDocumentSurface)
+                : null;
+            var rawMsaaCaret = shouldProbeCaret &&
+                rawBitableEditorAnchor is null &&
+                rawSheetCellAnchor is null
                 ? MsaaCaret(focusWindow == 0 ? foregroundWindow : focusWindow)
                 : null;
+            var msaaCaret = rawMsaaCaret is not null
+                ? FeishuDocumentCaretPolicy.KeepUnclamped(
+                    AnchorVisibilityPolicy.KeepVisible(rawMsaaCaret, visibleBounds),
+                    visibleBounds,
+                    isFeishuDocumentSurface)
+                : null;
+            var hasRawCaret = rawBitableEditorAnchor is not null ||
+                rawSheetCellAnchor is not null ||
+                rawTextPattern2Caret is not null ||
+                rawTextPatternCaret is not null ||
+                rawWin32Caret is not null ||
+                rawMsaaCaret is not null;
+            var caretOutsideVisibleBounds = visibleBounds is not null &&
+                hasRawCaret &&
+                uiAutomationCaret is null &&
+                win32Caret is null &&
+                msaaCaret is null;
             var inputState = hasEditableFocus
                 ? _inputStateProbe.Observe(focusWindow == 0 ? foregroundWindow : focusWindow)
                 : InputStateObservation.Unknown;
@@ -213,7 +270,11 @@ internal sealed class WindowsInputContextProbe : IDisposable
                 evidence,
                 uiAutomationCaretMethod,
                 textPattern2.Status,
-                Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
+                Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds)
+            {
+                TargetBounds = targetBounds,
+                CaretOutsideVisibleBounds = caretOutsideVisibleBounds,
+            };
         }
         catch (UnauthorizedAccessException)
         {
@@ -247,6 +308,103 @@ internal sealed class WindowsInputContextProbe : IDisposable
     private static TPattern? GetPattern<TPattern>(AutomationElement element, AutomationPattern pattern)
         where TPattern : class =>
         element.TryGetCurrentPattern(pattern, out var value) ? value as TPattern : null;
+
+    private static (AutomationElement Element, bool IsFeishuDocumentFocusProxy) ResolveProbeElement(
+        AutomationElement focusedElement,
+        AutomationElement.AutomationElementInformation focusedCurrent)
+    {
+        if (!focusedCurrent.HasKeyboardFocus ||
+            !focusedCurrent.IsEnabled ||
+            !AppProfileCatalog.IsHiddenFeishuSelectionHelper(
+                focusedCurrent.ClassName,
+                focusedCurrent.FrameworkId,
+                focusedCurrent.ControlType))
+        {
+            return (focusedElement, false);
+        }
+
+        var documentSurface = FindFeishuDocumentAncestor(
+            focusedElement,
+            focusedCurrent,
+            TreeWalker.ControlViewWalker) ??
+            FindFeishuDocumentAncestor(
+                focusedElement,
+                focusedCurrent,
+                TreeWalker.RawViewWalker);
+        return documentSurface is null
+            ? (focusedElement, false)
+            : (documentSurface, true);
+    }
+
+    private static AutomationElement? FindFeishuDocumentAncestor(
+        AutomationElement focusedElement,
+        AutomationElement.AutomationElementInformation focusedCurrent,
+        TreeWalker walker)
+    {
+        var ancestor = walker.GetParent(focusedElement);
+        for (var depth = 0; depth < 24 && ancestor is not null; depth++)
+        {
+            var current = ancestor.Current;
+            var textPattern = GetPattern<TextPattern>(ancestor, TextPattern.Pattern);
+            if (current.IsEnabled &&
+                !current.IsOffscreen &&
+                AppProfileCatalog.SupportsFeishuDocumentFocusProxy(
+                    focusedCurrent.ClassName,
+                    focusedCurrent.FrameworkId,
+                    focusedCurrent.ControlType,
+                    current.ClassName,
+                    current.FrameworkId,
+                    current.ControlType,
+                    textPattern is not null))
+            {
+                return ancestor;
+            }
+
+            ancestor = walker.GetParent(ancestor);
+        }
+
+        return null;
+    }
+
+    private static List<ScreenRect> FeishuDocumentVerticalClippingBounds(
+        AutomationElement documentSurface)
+    {
+        var result = new List<ScreenRect>();
+        try
+        {
+            var processId = documentSurface.Current.ProcessId;
+            var ancestor = TreeWalker.RawViewWalker.GetParent(documentSurface);
+            for (var depth = 0; depth < 24 && ancestor is not null; depth++)
+            {
+                var current = ancestor.Current;
+                if (current.ProcessId != processId)
+                {
+                    break;
+                }
+
+                if (!current.IsOffscreen &&
+                    ToScreenRect(current.BoundingRectangle) is { } bounds)
+                {
+                    result.Add(bounds);
+                }
+
+                if (current.ControlType == ControlType.Document)
+                {
+                    break;
+                }
+
+                ancestor = TreeWalker.RawViewWalker.GetParent(ancestor);
+            }
+        }
+        catch (Exception exception) when (
+            exception is COMException || IsExpectedProbeFailure(exception))
+        {
+            // Keep any stable ancestors already collected; the window and target bounds
+            // still provide the conservative fallback used by every other profile.
+        }
+
+        return result;
+    }
 
     private static ScreenRect? TryGetFeishuSheetCellAnchor(AutomationElement element)
     {
@@ -417,7 +575,7 @@ internal sealed class WindowsInputContextProbe : IDisposable
                 collapsed,
                 TextPatternRangeEndpoint.End);
             var caret = FirstRectangle(collapsed.GetBoundingRectangles());
-            return caret is { } value && IsCaretLike(value) ? value : null;
+            return CaretAnchorPolicy.KeepCaretLike(caret);
         }
         catch (Exception exception) when (IsExpectedProbeFailure(exception))
         {
@@ -429,10 +587,20 @@ internal sealed class WindowsInputContextProbe : IDisposable
         }
     }
 
-    private static bool IsCaretLike(ScreenRect rectangle) =>
-        rectangle.IsUsable &&
-        rectangle.Width <= Math.Max(8, rectangle.Height / 2) &&
-        rectangle.Height <= 256;
+    private static ScreenRect? WindowBounds(nint window)
+    {
+        if (window == 0 || !NativeMethods.GetWindowRect(window, out var bounds))
+        {
+            return null;
+        }
+
+        var rectangle = new ScreenRect(
+            bounds.Left,
+            bounds.Top,
+            bounds.Right - bounds.Left,
+            bounds.Bottom - bounds.Top);
+        return rectangle.IsUsable ? rectangle : null;
+    }
 
     private static bool IsStillCurrent(ObservationIdentity initial)
     {
@@ -459,6 +627,12 @@ internal sealed class WindowsInputContextProbe : IDisposable
         }
 
         return null;
+    }
+
+    private static ScreenRect? ToScreenRect(System.Windows.Rect source)
+    {
+        var rectangle = new ScreenRect(source.X, source.Y, source.Width, source.Height);
+        return rectangle.IsUsable ? rectangle : null;
     }
 
     private static ScreenRect? Win32Caret(GuiThreadInfo threadInfo)

@@ -96,6 +96,14 @@ foreground HWND
 - 上述后三行不是 Microsoft 对微软拼音的公开兼容承诺。TSF 组件、目标应用是否使用 IMM 兼容层、权限级别和输入法版本均可能令读数缺失或不同步。
 - 组合期、候选窗、全角/半角以及“中英文”以外的模式不应被此二值映射伪造为确定状态；V1 在无法解释时为 `Unknown`。
 
+### 微信输入法（WeType）实机画像
+
+2026-09-11 的成对脱敏采样确认：微信输入法的中文/英文模式切换会改变默认 IME 窗口的 open status，但 conversion mode 在两种模式之间保持不变。因此不能套用微软拼音依赖 `IME_CMODE_NATIVE` 的映射。
+
+当前实现通过 [`ITfInputProcessorProfileMgr::GetActiveProfile`](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfinputprocessorprofilemgr-getactiveprofile) 读取活动键盘 TIP 配置；只有同时命中 WeType 的 CLSID `86598fb9-66a2-463e-b9c2-aeb906d477ad` 与配置 GUID `607fdf85-fcc8-4dbd-a365-41296f980c9c` 时，才使用 `open=1 -> Chinese`、`open=0 -> English`。配置身份缺失或不同则继续走原有保守规则，不把该例外扩散到其它输入法。
+
+现场回归采样共 45 条有效 `Chrome + EditableCaret` 观察：22 条 `open=1 -> Chinese`、23 条 `open=0 -> English`，活动 CLSID/Profile 全程一致。诊断只保存状态、控件画像和输入法标识，不保存文字、按键或窗口标题。
+
 ## 5. V1 的保守判定与失败降级
 
 ### 判定优先级
@@ -143,3 +151,4 @@ InputTip 与 ImTip/aardio 仅用于发现候选 API、兼容场景和失败案�
 - [ImmIsIME](https://learn.microsoft.com/en-us/windows/win32/api/imm/nf-imm-immisime)、[ImmGetContext](https://learn.microsoft.com/en-us/windows/win32/api/imm/nf-imm-immgetcontext)、[ImmGetOpenStatus](https://learn.microsoft.com/en-us/windows/win32/api/imm/nf-imm-immgetopenstatus)、[ImmGetConversionStatus](https://learn.microsoft.com/en-us/windows/win32/api/imm/nf-imm-immgetconversionstatus)、[IME Conversion Mode Values](https://learn.microsoft.com/en-us/windows/win32/intl/ime-conversion-mode-values)
 - [ImmGetDefaultIMEWnd](https://learn.microsoft.com/en-us/windows/win32/api/imm/nf-imm-immgetdefaultimewnd)、[WM_IME_CONTROL](https://learn.microsoft.com/en-us/windows/win32/intl/wm-ime-control)、[SendMessage](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendmessagew)、[SendMessageTimeout](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendmessagetimeoutw)
 - [IME requirements / TSF](https://learn.microsoft.com/en-us/windows/apps/design/input/input-method-editor-requirements)、[Microsoft Win32 metadata](https://github.com/microsoft/win32metadata)
+- [GetActiveProfile](https://learn.microsoft.com/en-us/windows/win32/api/msctf/nf-msctf-itfinputprocessorprofilemgr-getactiveprofile)、[TF_INPUTPROCESSORPROFILE](https://learn.microsoft.com/en-us/windows/win32/api/msctf/ns-msctf-tf_inputprocessorprofile)

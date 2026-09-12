@@ -8,7 +8,9 @@ public sealed record InputStateEvidence(
     uint? ConversionMode,
     bool? HasDefaultImeWindow = null,
     uint? ImeWindowOpenStatus = null,
-    uint? ImeWindowConversionMode = null)
+    uint? ImeWindowConversionMode = null,
+    Guid? InputProcessorClassId = null,
+    Guid? InputProcessorProfileId = null)
 {
     public static readonly InputStateEvidence Unavailable = new(
         null,

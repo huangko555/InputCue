@@ -15,7 +15,9 @@ public sealed class InputCueSettingsStoreTests
         var settings = store.Load();
 
         Assert.Equal(InputCueSettings.Default, settings);
-        Assert.Equal(IndicatorStyle.LightBadge, settings.Style);
+        Assert.Equal(IndicatorStyle.Default, settings.Style);
+        Assert.Equal(IndicatorDisplayMode.IdlePersistent, settings.DisplayMode);
+        Assert.Equal(3, settings.IdleReshowDelaySeconds);
     }
 
     [Fact]
@@ -37,9 +39,21 @@ public sealed class InputCueSettingsStoreTests
             SameAppPromptMode: AppStayPromptMode.AfterDelay,
             SameAppPromptDelaySeconds: 120,
             FullScreenAutoPause: true,
-            DotAppearance: new(IndicatorPlacement.TopLeft, -4, 6, 15),
+            DisplayMode: IndicatorDisplayMode.IdlePersistent,
+            IdleReshowDelaySeconds: 5,
+            DotAppearance: new(
+                IndicatorPlacement.TopLeft,
+                -4,
+                6,
+                15,
+                IndicatorTransitionAnimation.Flip),
             LightBadgeAppearance: new(IndicatorPlacement.Right, 8, -3, 42),
-            ShadowBadgeAppearance: new(IndicatorPlacement.Bottom, -7, 9, 48));
+            ShadowBadgeAppearance: new(
+                IndicatorPlacement.Bottom,
+                -7,
+                9,
+                48,
+                IndicatorTransitionAnimation.Flip));
 
         Assert.True(store.TrySave(first));
         Assert.True(store.TrySave(second));
@@ -74,6 +88,34 @@ public sealed class InputCueSettingsStoreTests
     }
 
     [Fact]
+    public void NewStyleSlotsRoundTripIndependently()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var store = new InputCueSettingsStore(path);
+        var settings = new InputCueSettings(
+            1200,
+            400,
+            Style: IndicatorStyle.Custom2,
+            DefaultAppearance: new(IndicatorPlacement.Left, 2, 3, 34),
+            Custom2Appearance: new(
+                IndicatorPlacement.BottomLeft,
+                -5,
+                7,
+                48,
+                IndicatorTransitionAnimation.Flip),
+            Custom2IconShadow: CustomIconShadowMode.Heavy);
+
+        Assert.True(store.TrySave(settings));
+
+        var loaded = store.Load();
+        Assert.Equal(IndicatorStyle.Custom2, loaded.Style);
+        Assert.Equal(settings.DefaultAppearance, loaded.DefaultAppearance);
+        Assert.Equal(settings.Custom2Appearance, loaded.Custom2Appearance);
+        Assert.Equal(CustomIconShadowMode.Heavy, loaded.Custom2IconShadow);
+    }
+
+    [Fact]
     public void ExistingSettingsGainPositionDefaultsWithoutLosingTimingValues()
     {
         using var directory = new TemporaryDirectory();
@@ -105,6 +147,8 @@ public sealed class InputCueSettingsStoreTests
             InputCueSettings.DefaultSameAppPromptDelaySeconds,
             settings.SameAppPromptDelaySeconds);
         Assert.True(settings.FullScreenAutoPause);
+        Assert.Equal(IndicatorDisplayMode.IdlePersistent, settings.DisplayMode);
+        Assert.Equal(InputCueSettings.DefaultIdleReshowDelaySeconds, settings.IdleReshowDelaySeconds);
     }
 
     [Theory]
@@ -177,6 +221,24 @@ public sealed class InputCueSettingsStoreTests
         Assert.False(File.Exists(path));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(61)]
+    public void InvalidIdleReshowDelayIsNotWritten(int delaySeconds)
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var store = new InputCueSettingsStore(path);
+
+        var saved = store.TrySave(new InputCueSettings(
+            1000,
+            300,
+            IdleReshowDelaySeconds: delaySeconds));
+
+        Assert.False(saved);
+        Assert.False(File.Exists(path));
+    }
+
     [Fact]
     public void LegacyCommonAppearanceIsInheritedByEachStyle()
     {
@@ -198,6 +260,12 @@ public sealed class InputCueSettingsStoreTests
         Assert.Equal(
             new IndicatorAppearanceSettings(IndicatorPlacement.TopRight, 7, -5, 40),
             settings.GetAppearance(IndicatorStyle.ShadowBadge));
+        Assert.Equal(
+            new IndicatorAppearanceSettings(IndicatorPlacement.TopRight, 7, -5, 40),
+            settings.GetAppearance(IndicatorStyle.Default));
+        Assert.Equal(
+            new IndicatorAppearanceSettings(IndicatorPlacement.TopRight, 7, -5, 40),
+            settings.GetAppearance(IndicatorStyle.Custom2));
     }
 
     [Theory]
@@ -233,7 +301,7 @@ public sealed class InputCueSettingsStoreTests
     [InlineData(IndicatorPlacement.Right, -41, 0, 12)]
     [InlineData(IndicatorPlacement.Right, 0, 41, 12)]
     [InlineData(IndicatorPlacement.Right, 0, 0, 5)]
-    [InlineData(IndicatorPlacement.Right, 0, 0, 33)]
+    [InlineData(IndicatorPlacement.Right, 0, 0, 65)]
     [InlineData((IndicatorPlacement)99, 0, 0, 12)]
     public void InvalidPositionSettingsAreNotWritten(
         IndicatorPlacement placement,
@@ -259,7 +327,7 @@ public sealed class InputCueSettingsStoreTests
 
     [Theory]
     [InlineData((IndicatorStyle)99, 36)]
-    [InlineData(IndicatorStyle.LightBadge, 23)]
+    [InlineData(IndicatorStyle.LightBadge, 0)]
     [InlineData(IndicatorStyle.LightBadge, 65)]
     public void InvalidStyleSettingsAreNotWritten(
         IndicatorStyle style,

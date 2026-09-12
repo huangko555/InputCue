@@ -177,6 +177,193 @@ public sealed class InputContextEngineTests
     }
 
     [Fact]
+    public async Task WatchAsyncTracksCaretOnlyWhileTrackingIsEnabled()
+    {
+        using var runtime = new MutableInputStateRuntime(InputState.English);
+        using var engine = new InputContextEngine(
+            TimeSpan.FromSeconds(5),
+            ignoreCurrentProcess: false,
+            runtime);
+        using var cancellation = new CancellationTokenSource();
+        await using var enumerator = engine
+            .WatchAsync(cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.True(SpinWait.SpinUntil(
+            () => runtime.FullObservationCount == 4,
+            TimeSpan.FromMilliseconds(500)));
+
+        runtime.SetCaretX(240);
+        engine.SetCaretTrackingEnabled(true);
+
+        var tracked = enumerator.MoveNextAsync().AsTask();
+        var completed = await Task.WhenAny(
+            tracked,
+            Task.Delay(TimeSpan.FromMilliseconds(500)));
+        if (completed != tracked)
+        {
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await tracked);
+        }
+
+        Assert.Same(tracked, completed);
+        Assert.True(await tracked);
+        Assert.Equal(240, enumerator.Current.Snapshot.Anchor?.X);
+
+        engine.SetCaretTrackingEnabled(false);
+        var observationsAfterDisable = runtime.FullObservationCount;
+        await Task.Delay(TimeSpan.FromMilliseconds(350));
+        Assert.InRange(
+            runtime.FullObservationCount,
+            observationsAfterDisable,
+            observationsAfterDisable + 1);
+        cancellation.Cancel();
+    }
+
+    [Fact]
+    public async Task WatchAsyncQuicklyRecoversACaretAfterItWasScrolledOutOfView()
+    {
+        using var runtime = new MutableInputStateRuntime(InputState.English);
+        using var engine = new InputContextEngine(
+            sampleInterval: null,
+            ignoreCurrentProcess: false,
+            runtime);
+        using var cancellation = new CancellationTokenSource();
+        await using var enumerator = engine
+            .WatchAsync(cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+
+        engine.SetCaretTrackingEnabled(true);
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.Equal(Eligibility.EditableCaret, enumerator.Current.Snapshot.Eligibility);
+
+        runtime.SetCaretAvailable(false, outsideVisibleBounds: true);
+        Assert.True(await enumerator.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromMilliseconds(400)));
+        Assert.Equal(Eligibility.PositionUnknown, enumerator.Current.Snapshot.Eligibility);
+        Assert.False(enumerator.Current.DeferContextLoss);
+
+        // This mirrors MainWindow after the marker disappears. Let the bounded
+        // position retries finish before the document is scrolled back.
+        engine.SetCaretTrackingEnabled(false);
+        Assert.True(SpinWait.SpinUntil(
+            () => runtime.FullObservationCount >= 5,
+            TimeSpan.FromMilliseconds(500)));
+        Assert.True(await enumerator.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromMilliseconds(200)));
+        Assert.Equal(Eligibility.PositionUnknown, enumerator.Current.Snapshot.Eligibility);
+
+        runtime.SetCaretAvailable(true);
+        var recoveredAt = Stopwatch.StartNew();
+        while (enumerator.Current.Snapshot.Eligibility is not Eligibility.EditableCaret)
+        {
+            var remaining = TimeSpan.FromMilliseconds(500) - recoveredAt.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+            {
+                Assert.Fail("The Caret did not return within the interactive refresh budget.");
+            }
+
+            var next = enumerator.MoveNextAsync().AsTask();
+            var completed = await Task.WhenAny(next, Task.Delay(remaining));
+            if (completed != next)
+            {
+                cancellation.Cancel();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await next);
+                Assert.Fail("The Caret did not return within the interactive refresh budget.");
+            }
+
+            Assert.True(await next);
+        }
+
+        Assert.InRange(recoveredAt.ElapsedMilliseconds, 0, 400);
+        cancellation.Cancel();
+    }
+
+    [Fact]
+    public async Task RequestObservationWakesAFullProbeWithoutContinuousTracking()
+    {
+        using var runtime = new TestInputContextRuntime(stableIdentity: true);
+        using var engine = new InputContextEngine(
+            TimeSpan.FromSeconds(5),
+            ignoreCurrentProcess: false,
+            runtime);
+        using var cancellation = new CancellationTokenSource();
+        await using var enumerator = engine
+            .WatchAsync(cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+        Assert.True(await enumerator.MoveNextAsync());
+
+        var requested = enumerator.MoveNextAsync().AsTask();
+        engine.RequestObservation();
+        var completed = await Task.WhenAny(
+            requested,
+            Task.Delay(TimeSpan.FromMilliseconds(500)));
+        if (completed != requested)
+        {
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await requested);
+        }
+
+        Assert.Same(requested, completed);
+        Assert.True(await requested);
+        Assert.Equal(2, runtime.ObservationCount);
+        cancellation.Cancel();
+    }
+
+    [Fact]
+    public async Task RequestedObservationBypassesThePeriodicObservationBudget()
+    {
+        using var runtime = new TestInputContextRuntime(
+            stableIdentity: true,
+            hasEditableFocus: false);
+        using var engine = new InputContextEngine(
+            TimeSpan.FromSeconds(5),
+            ignoreCurrentProcess: false,
+            runtime);
+        using var cancellation = new CancellationTokenSource();
+        long elapsedMilliseconds;
+        await using (var enumerator = engine
+            .WatchAsync(cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token))
+        {
+            Assert.True(await enumerator.MoveNextAsync());
+
+            var requested = enumerator.MoveNextAsync().AsTask();
+            var elapsed = Stopwatch.StartNew();
+            engine.RequestObservation();
+
+            Assert.True(await requested.WaitAsync(TimeSpan.FromSeconds(1)));
+            elapsed.Stop();
+            elapsedMilliseconds = elapsed.ElapsedMilliseconds;
+            cancellation.Cancel();
+        }
+
+        Assert.InRange(elapsedMilliseconds, 0, 125);
+    }
+
+    [Fact]
+    public async Task WatchAsyncKeepsGenerationWhenOnlyTheEditorRuntimeIdChanges()
+    {
+        using var runtime = new TestInputContextRuntime(churnAutomationIdentityOnly: true);
+        using var engine = new InputContextEngine(
+            TimeSpan.FromSeconds(5),
+            ignoreCurrentProcess: false,
+            runtime);
+        using var cancellation = new CancellationTokenSource();
+        await using var enumerator = engine
+            .WatchAsync(cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+
+        Assert.True(await enumerator.MoveNextAsync());
+        var initialGeneration = enumerator.Current.Snapshot.Generation;
+
+        runtime.SignalChange();
+        Assert.True(await enumerator.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1)));
+
+        Assert.Equal(initialGeneration, enumerator.Current.Snapshot.Generation);
+        cancellation.Cancel();
+    }
+
+    [Fact]
     public async Task WatchAsyncMarksAQuickReturnToTheSameEditorForReplaySuppression()
     {
         using var runtime = new ContextReturnRuntime();
@@ -195,6 +382,7 @@ public sealed class InputContextEngineTests
         runtime.Advance();
         Assert.True(await enumerator.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromMilliseconds(300)));
         Assert.Equal(Eligibility.NoEditableFocus, enumerator.Current.Snapshot.Eligibility);
+        Assert.True(enumerator.Current.DeferContextLoss);
 
         runtime.Advance();
         Assert.True(await enumerator.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromMilliseconds(300)));
@@ -434,16 +622,22 @@ public sealed class InputContextEngineTests
         private readonly InputState _inputState;
         private readonly InputStateEvidence _inputStateEvidence;
         private readonly bool _stableIdentity;
+        private readonly bool _churnAutomationIdentityOnly;
+        private readonly bool _hasEditableFocus;
         private int _observationCount;
 
         internal TestInputContextRuntime(
             InputState inputState = InputState.Unknown,
             InputStateEvidence? inputStateEvidence = null,
-            bool stableIdentity = false)
+            bool stableIdentity = false,
+            bool churnAutomationIdentityOnly = false,
+            bool hasEditableFocus = true)
         {
             _inputState = inputState;
             _inputStateEvidence = inputStateEvidence ?? InputStateEvidence.Unavailable;
             _stableIdentity = stableIdentity;
+            _churnAutomationIdentityOnly = churnAutomationIdentityOnly;
+            _hasEditableFocus = hasEditableFocus;
         }
 
         internal ManualResetEventSlim ChangeWasObserved => _changeWasObserved;
@@ -457,17 +651,34 @@ public sealed class InputContextEngineTests
         {
             var observationCount = Interlocked.Increment(ref _observationCount);
             var identity = _stableIdentity ? 1 : observationCount;
+            var nativeIdentity = _churnAutomationIdentityOnly ? 1 : identity;
             return new RawInputContextObservation(
+                nativeIdentity,
+                nativeIdentity,
                 identity,
-                identity,
-                identity,
-                new TargetDescriptor(identity, $"target-{identity}", "ControlType.Edit", "Edit", "Test"),
+                new TargetDescriptor(
+                    nativeIdentity,
+                    $"target-{nativeIdentity}",
+                    "ControlType.Edit",
+                    "Edit",
+                    "Test"),
                 _inputState,
                 _inputStateEvidence,
-                new InputEvidence(true, false, false, new ScreenRect(100, 120, 2, 20), null, null),
+                new InputEvidence(
+                    _hasEditableFocus,
+                    false,
+                    false,
+                    _hasEditableFocus ? new ScreenRect(100, 120, 2, 20) : null,
+                    null,
+                    null),
                 UiAutomationCaretMethod.TextPattern,
                 TextPattern2Status.PatternUnavailable,
-                1);
+                1)
+            {
+                TargetBounds = _hasEditableFocus
+                    ? new ScreenRect(80, 80, 800, 600)
+                    : null,
+            };
         }
 
         public RawInputContextObservation RefreshInputState(RawInputContextObservation current) =>
@@ -521,7 +732,12 @@ public sealed class InputContextEngineTests
                     null),
                 UiAutomationCaretMethod.TextPattern,
                 TextPattern2Status.PatternUnavailable,
-                1);
+                1)
+            {
+                TargetBounds = isEditable
+                    ? new ScreenRect(100, 100, 400, 40)
+                    : null,
+            };
         }
 
         public RawInputContextObservation RefreshInputState(RawInputContextObservation current) =>
@@ -552,8 +768,11 @@ public sealed class InputContextEngineTests
         private readonly ManualResetEventSlim _changeWasObserved = new();
         private readonly AutoResetEvent _signal = new(initialState: false);
         private int _fullObservationCount;
+        private int _hasCaret = hasCaret ? 1 : 0;
+        private int _caretOutsideVisibleBounds;
         private int _inputState = (int)initialState;
         private int _inputStateRefreshCount;
+        private double _caretXAfterFirstObservation = caretXAfterFirstObservation;
 
         internal int FullObservationCount => Volatile.Read(ref _fullObservationCount);
 
@@ -578,10 +797,12 @@ public sealed class InputContextEngineTests
                     false,
                     false,
                     hasEditableFocus &&
-                    hasCaret &&
+                    Volatile.Read(ref _hasCaret) != 0 &&
                     observationCount >= caretAvailableAfterObservation
                         ? new ScreenRect(
-                            observationCount == 1 ? 100 : caretXAfterFirstObservation,
+                            observationCount == 1
+                                ? 100
+                                : Volatile.Read(ref _caretXAfterFirstObservation),
                             120,
                             2,
                             20)
@@ -590,7 +811,10 @@ public sealed class InputContextEngineTests
                     null),
                 UiAutomationCaretMethod.TextPattern,
                 TextPattern2Status.PatternUnavailable,
-                1);
+                1)
+            {
+                CaretOutsideVisibleBounds = Volatile.Read(ref _caretOutsideVisibleBounds) != 0,
+            };
         }
 
         public RawInputContextObservation RefreshInputState(RawInputContextObservation current)
@@ -605,6 +829,19 @@ public sealed class InputContextEngineTests
 
         internal void SetInputState(InputState inputState) =>
             Volatile.Write(ref _inputState, (int)inputState);
+
+        internal void SetCaretX(double caretX) =>
+            Volatile.Write(ref _caretXAfterFirstObservation, caretX);
+
+        internal void SetCaretAvailable(
+            bool available,
+            bool outsideVisibleBounds = false)
+        {
+            Volatile.Write(ref _hasCaret, available ? 1 : 0);
+            Volatile.Write(
+                ref _caretOutsideVisibleBounds,
+                outsideVisibleBounds ? 1 : 0);
+        }
 
         public void Dispose()
         {
@@ -628,6 +865,8 @@ public sealed class InputContextEngineTests
 
             return result == 0;
         }
+
+        public void SignalChange() => signal.Set();
 
         public void Dispose()
         {
@@ -674,6 +913,10 @@ public sealed class InputContextEngineTests
     {
         public bool WaitForChange(TimeSpan fallbackInterval, CancellationToken cancellation) =>
             throw new InvalidOperationException("Injected event source failure.");
+
+        public void SignalChange()
+        {
+        }
 
         public void Dispose()
         {

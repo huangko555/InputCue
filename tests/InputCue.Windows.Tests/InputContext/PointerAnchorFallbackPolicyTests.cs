@@ -38,6 +38,20 @@ public sealed class PointerAnchorFallbackPolicyTests
         Assert.Equal(PointerAnchor, result.Snapshot.Anchor);
     }
 
+    [Fact]
+    public void FeishuDocumentKeepsItsRealCaretInsteadOfUsingTheMousePoint()
+    {
+        var diagnostic = FeishuDiagnostic(anchor: new ScreenRect(100, 947, 1, 20));
+
+        var result = PointerAnchorFallbackPolicy.Apply(
+            diagnostic,
+            Click(processId: 30, windowClassName: "Chrome_RenderWidgetHostHWND"),
+            Now,
+            currentForegroundWindow: 10);
+
+        Assert.Same(diagnostic, result);
+    }
+
     [Theory]
     [InlineData(Eligibility.EditableCaret, false, false, "wps", "KxWpsView")]
     [InlineData(Eligibility.PositionUnknown, true, false, "wps", "KxWpsView")]
@@ -104,6 +118,105 @@ public sealed class PointerAnchorFallbackPolicyTests
             currentForegroundWindow: 10);
 
         Assert.True(shouldRetain);
+    }
+
+    [Fact]
+    public void SameBrowserWindowCanActivateAcrossChromiumProcessIds()
+    {
+        var diagnostic = Diagnostic(
+            eligibility: Eligibility.EditableCaret,
+            processName: "msedge");
+        var click = Click(processId: 21);
+
+        var shouldActivate = PointerAnchorFallbackPolicy.ShouldActivateContext(
+            click,
+            diagnostic,
+            Now,
+            currentForegroundWindow: 10);
+
+        Assert.True(shouldActivate);
+    }
+
+    [Fact]
+    public void ContextActivationRejectsADifferentForegroundWindow()
+    {
+        var shouldActivate = PointerAnchorFallbackPolicy.ShouldActivateContext(
+            Click(),
+            Diagnostic(eligibility: Eligibility.EditableCaret),
+            Now,
+            currentForegroundWindow: 11);
+
+        Assert.False(shouldActivate);
+    }
+
+    [Fact]
+    public void ContextActivationWaitsForAnObservationAfterTheClick()
+    {
+        var click = Click(observedAt: Now);
+        var diagnostic = Diagnostic(eligibility: Eligibility.EditableCaret) with
+        {
+            Snapshot = Diagnostic(eligibility: Eligibility.EditableCaret).Snapshot with
+            {
+                ObservedAt = Now - TimeSpan.FromMilliseconds(1),
+            },
+        };
+
+        var shouldActivate = PointerAnchorFallbackPolicy.ShouldActivateContext(
+            click,
+            diagnostic,
+            Now,
+            currentForegroundWindow: 10);
+
+        Assert.False(shouldActivate);
+    }
+
+    [Fact]
+    public void ContextActivationRejectsAnIneligibleObservation()
+    {
+        var shouldActivate = PointerAnchorFallbackPolicy.ShouldActivateContext(
+            Click(),
+            Diagnostic(eligibility: Eligibility.PositionUnknown),
+            Now,
+            currentForegroundWindow: 10);
+
+        Assert.False(shouldActivate);
+    }
+
+    [Fact]
+    public void TransientIneligibleObservationKeepsTheClickForTheFollowingCaret()
+    {
+        var click = Click();
+
+        var transientDecision = PointerAnchorFallbackPolicy.EvaluateContextActivation(
+            click,
+            Diagnostic(eligibility: Eligibility.PositionUnknown),
+            Now,
+            currentForegroundWindow: 10);
+        var caretDecision = PointerAnchorFallbackPolicy.EvaluateContextActivation(
+            click,
+            Diagnostic(eligibility: Eligibility.EditableCaret),
+            Now,
+            currentForegroundWindow: 10);
+
+        Assert.Equal(PointerContextActivationDecision.Wait, transientDecision);
+        Assert.Equal(PointerContextActivationDecision.Activate, caretDecision);
+    }
+
+    [Theory]
+    [InlineData(-1, 10)]
+    [InlineData(6, 10)]
+    [InlineData(1, 11)]
+    public void ContextActivationDiscardsClicksWithInvalidTimeOrWindow(
+        int clickAgeSeconds,
+        long foregroundWindow)
+    {
+        var decision = PointerAnchorFallbackPolicy.EvaluateContextActivation(
+            Click(observedAt: Now - TimeSpan.FromSeconds(clickAgeSeconds)),
+            Diagnostic(eligibility: Eligibility.EditableCaret),
+            Now,
+            currentForegroundWindow: (nint)foregroundWindow);
+
+        Assert.Equal(PointerContextActivationDecision.Discard, decision);
     }
 
     [Fact]
@@ -208,6 +321,34 @@ public sealed class PointerAnchorFallbackPolicyTests
             UiAutomationCaret: null,
             UiAutomationCaretMethod.None,
             TextPattern2Status.NotAttempted,
+            Win32Caret: null,
+            MsaaCaret: null,
+            ProbeIssue.None,
+            DurationMilliseconds: 1);
+
+    private static InputContextDiagnostic FeishuDiagnostic(ScreenRect anchor) =>
+        new(
+            new InputContextSnapshot(
+                1,
+                Now - TimeSpan.FromMilliseconds(50),
+                Eligibility.EditableCaret,
+                InputState.Chinese,
+                anchor,
+                AnchorSource.UiAutomation,
+                EvidenceGrade.Confirmed,
+                ReasonCode.EditableCaretConfirmed),
+            new TargetDescriptor(
+                30,
+                "msedge",
+                "ControlType.Group",
+                "page-block root-block",
+                "Chrome"),
+            HasEditableFocus: true,
+            IsReadOnly: false,
+            HasSelection: false,
+            UiAutomationCaret: anchor,
+            UiAutomationCaretMethod.TextPattern,
+            TextPattern2Status.PatternUnavailable,
             Win32Caret: null,
             MsaaCaret: null,
             ProbeIssue.None,

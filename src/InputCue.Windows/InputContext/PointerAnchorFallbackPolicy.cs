@@ -61,4 +61,49 @@ internal static class PointerAnchorFallbackPolicy
         now - click.ObservedAt <= MaximumAge &&
         currentForegroundWindow != 0 &&
         click.ForegroundWindow == currentForegroundWindow;
+
+    internal static bool ShouldActivateContext(
+        PointerClickObservation click,
+        InputContextDiagnostic diagnostic,
+        DateTimeOffset now,
+        nint currentForegroundWindow) =>
+        diagnostic.Snapshot.ObservedAt >= click.ObservedAt &&
+        now >= click.ObservedAt &&
+        now - click.ObservedAt <= MaximumAge &&
+        click.ForegroundWindow != 0 &&
+        click.ForegroundWindow == currentForegroundWindow &&
+        diagnostic.Snapshot.Eligibility is Eligibility.EditableCaret or Eligibility.EditableSelection &&
+        diagnostic.Snapshot.InputState is not InputState.Unknown &&
+        diagnostic.Snapshot.Anchor is { IsUsable: true };
+
+    internal static PointerContextActivationDecision EvaluateContextActivation(
+        PointerClickObservation click,
+        InputContextDiagnostic diagnostic,
+        DateTimeOffset now,
+        nint currentForegroundWindow)
+    {
+        if (now < click.ObservedAt ||
+            now - click.ObservedAt > MaximumAge ||
+            click.ForegroundWindow == 0 ||
+            click.ForegroundWindow != currentForegroundWindow)
+        {
+            return PointerContextActivationDecision.Discard;
+        }
+
+        if (diagnostic.Snapshot.ObservedAt < click.ObservedAt)
+        {
+            return PointerContextActivationDecision.Wait;
+        }
+
+        return ShouldActivateContext(click, diagnostic, now, currentForegroundWindow)
+            ? PointerContextActivationDecision.Activate
+            : PointerContextActivationDecision.Wait;
+    }
+}
+
+internal enum PointerContextActivationDecision
+{
+    Wait,
+    Activate,
+    Discard,
 }

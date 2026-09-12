@@ -9,6 +9,7 @@ public enum IndicatorReasonCode
     InputStateUnknown,
     PositionUnavailable,
     InputActivityDetected,
+    InputIdleElapsed,
     DisplayDurationElapsed,
     FadeCompleted,
 }

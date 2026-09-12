@@ -14,6 +14,8 @@ internal sealed class ContextReturnTracker
         _returnWindow = returnWindow;
     }
 
+    internal bool IsContextLossPending => _candidate is not null;
+
     internal bool Observe(
         RawInputContextObservation observation,
         InputContextSnapshot snapshot)
@@ -57,6 +59,13 @@ internal sealed class ContextReturnTracker
                 _lastEditableTarget = null;
             }
         }
+        else if (snapshot.Eligibility is Eligibility.PositionUnknown &&
+            _candidate is null &&
+            _lastEditableTarget is { } lastEditableTarget &&
+            lastEditableTarget.MatchesIgnoringInputState(observation))
+        {
+            _candidate = new ReturnCandidate(lastEditableTarget, snapshot.ObservedAt);
+        }
 
         return false;
     }
@@ -70,38 +79,24 @@ internal sealed class ContextReturnTracker
     private sealed record ReturnCandidate(EditableTarget Target, DateTimeOffset LeftAt);
 
     private sealed record EditableTarget(
-        nint ForegroundWindow,
-        nint FocusWindow,
-        int ProcessId,
-        string ControlType,
-        string ClassName,
-        string FrameworkId,
+        RawInputContextObservation Observation,
         InputState InputState)
     {
         internal static EditableTarget From(
             RawInputContextObservation observation,
             InputState inputState) =>
-            new(
-                observation.ForegroundWindow,
-                observation.FocusWindow,
-                observation.Target.ProcessId,
-                observation.Target.ControlType,
-                observation.Target.ClassName,
-                observation.Target.FrameworkId,
-                inputState);
+            new(observation, inputState);
 
         internal bool SharesNativeContext(RawInputContextObservation observation) =>
-            ForegroundWindow == observation.ForegroundWindow &&
-            FocusWindow == observation.FocusWindow &&
-            ProcessId == observation.Target.ProcessId;
+            Observation.ForegroundWindow == observation.ForegroundWindow &&
+            Observation.FocusWindow == observation.FocusWindow &&
+            Observation.Target.ProcessId == observation.Target.ProcessId;
 
         internal bool Matches(EditableTarget other) =>
-            ForegroundWindow == other.ForegroundWindow &&
-            FocusWindow == other.FocusWindow &&
-            ProcessId == other.ProcessId &&
-            ControlType == other.ControlType &&
-            ClassName == other.ClassName &&
-            FrameworkId == other.FrameworkId &&
+            InputTargetContinuity.IsSameTarget(other.Observation, Observation) &&
             InputState == other.InputState;
+
+        internal bool MatchesIgnoringInputState(RawInputContextObservation other) =>
+            InputTargetContinuity.IsSameTarget(other, Observation);
     }
 }

@@ -120,10 +120,53 @@ public sealed class ContextReturnTrackerTests
         Assert.False(suppress);
     }
 
+    [Fact]
+    public void ReturnToADisjointEditorDoesNotSuppressTheTargetSwitch()
+    {
+        var tracker = new ContextReturnTracker(TimeSpan.FromMilliseconds(500));
+        _ = tracker.Observe(
+            Observation("ControlType.Edit", automationIdentity: 1, targetX: 100),
+            Snapshot(1, Start, Eligibility.EditableCaret));
+        _ = tracker.Observe(
+            Observation("ControlType.Button", automationIdentity: 2),
+            Snapshot(2, Start.AddMilliseconds(100), Eligibility.NoEditableFocus));
+
+        var suppress = tracker.Observe(
+            Observation("ControlType.Edit", automationIdentity: 3, targetX: 700),
+            Snapshot(3, Start.AddMilliseconds(200), Eligibility.EditableCaret));
+
+        Assert.False(suppress);
+    }
+
+    [Fact]
+    public void TemporaryMissingCaretInTheSameEditorDefersAndSuppressesReplay()
+    {
+        var tracker = new ContextReturnTracker(TimeSpan.FromMilliseconds(500));
+        _ = tracker.Observe(
+            Observation("ControlType.Edit", automationIdentity: 1),
+            Snapshot(1, Start, Eligibility.EditableCaret));
+
+        var missingCaret = Observation("ControlType.Edit", automationIdentity: 2) with
+        {
+            Evidence = new InputEvidence(true, false, false, null, null, null),
+        };
+        Assert.False(tracker.Observe(
+            missingCaret,
+            Snapshot(1, Start.AddMilliseconds(100), Eligibility.PositionUnknown)));
+        Assert.True(tracker.IsContextLossPending);
+
+        var suppress = tracker.Observe(
+            Observation("ControlType.Edit", automationIdentity: 3),
+            Snapshot(1, Start.AddMilliseconds(200), Eligibility.EditableCaret));
+
+        Assert.True(suppress);
+    }
+
     private static RawInputContextObservation Observation(
         string controlType,
         int automationIdentity,
-        nint foregroundWindow = 10) =>
+        nint foregroundWindow = 10,
+        double targetX = 100) =>
         new(
             foregroundWindow,
             20,
@@ -140,7 +183,12 @@ public sealed class ContextReturnTrackerTests
                 null),
             UiAutomationCaretMethod.TextPattern,
             TextPattern2Status.PatternUnavailable,
-            1);
+            1)
+        {
+            TargetBounds = controlType == "ControlType.Edit"
+                ? new ScreenRect(targetX, 100, 400, 40)
+                : null,
+        };
 
     private static InputContextSnapshot Snapshot(
         long generation,

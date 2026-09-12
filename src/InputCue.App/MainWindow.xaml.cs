@@ -51,9 +51,12 @@ public partial class MainWindow : Window, IDisposable
     private InputContextDiagnostic? _lastBaseDiagnostic;
     private InputContextDiagnostic? _lastRawDiagnostic;
     private PointerClickObservation? _pointerClick;
+    private PointerClickObservation? _pendingPointerActivation;
     private CancellationTokenSource? _watchCancellation;
     private bool _capsLockEnabled;
     private bool _disposed;
+    private IndicatorDisplayMode _displayMode;
+    private int _idleReshowDelaySeconds;
     private AppStayPromptMode _sameAppPromptMode;
     private int _sameAppPromptDelaySeconds;
     private bool _fullScreenAutoPause;
@@ -67,14 +70,15 @@ public partial class MainWindow : Window, IDisposable
     private int _minimumDisplayDurationMilliseconds;
     private IndicatorStyle _style;
     private IndicatorStyle _editingStyle;
-    private IndicatorAppearanceSettings _dotAppearance;
-    private IndicatorAppearanceSettings _lightBadgeAppearance;
-    private IndicatorAppearanceSettings _shadowBadgeAppearance;
-    private IndicatorAppearanceSettings _customAppearance;
+    private readonly Dictionary<IndicatorStyle, IndicatorAppearanceSettings> _appearances = [];
     private readonly string _customIconsDirectory;
+    private readonly string _custom2IconsDirectory;
     private CustomIconCatalogResult _customIconCatalogResult = CustomIconCatalogResult.Empty;
+    private CustomIconCatalogResult _custom2IconCatalogResult = CustomIconCatalogResult.Empty;
     private CustomIconImages _customIconImages = CustomIconImages.Empty;
+    private CustomIconImages _custom2IconImages = CustomIconImages.Empty;
     private CustomIconShadowMode _customShadow = CustomIconShadowMode.None;
+    private CustomIconShadowMode _custom2Shadow = CustomIconShadowMode.None;
     private string? _customIconMessage;
     private bool _customIconMessageIsError;
     private PreviewCell[] _previewCells = [];
@@ -123,6 +127,7 @@ public partial class MainWindow : Window, IDisposable
         _checkForUpdates = checkForUpdates;
         _openGitHub = openGitHub;
         _customIconsDirectory = customIconsDirectory;
+        _custom2IconsDirectory = Path.Combine(customIconsDirectory, "custom2");
         InitializeComponent();
         VersionText.Text = FormatVersion(typeof(MainWindow).Assembly.GetName().Version);
         _previewCells =
@@ -132,6 +137,8 @@ public partial class MainWindow : Window, IDisposable
             new(PreviewIndicatorEnglishUs, PreviewIconCanvasEnglishUs, PreviewCanvasEnglishUs, PreviewBoxEnglishUs, PreviewCaretEnglishUs),
             new(PreviewIndicatorCapsLock, PreviewIconCanvasCapsLock, PreviewCanvasCapsLock, PreviewBoxCapsLock, PreviewCaretCapsLock),
         ];
+        _displayMode = settings.DisplayMode;
+        _idleReshowDelaySeconds = settings.IdleReshowDelaySeconds;
         _sameAppPromptMode = settings.SameAppPromptMode;
         _sameAppPromptDelaySeconds = settings.SameAppPromptDelaySeconds;
         _fullScreenAutoPause = settings.FullScreenAutoPause;
@@ -139,12 +146,13 @@ public partial class MainWindow : Window, IDisposable
         _minimumDisplayDurationMilliseconds = settings.MinimumDisplayDurationMilliseconds;
         _style = settings.Style;
         _editingStyle = _style;
-        _dotAppearance = settings.GetAppearance(IndicatorStyle.Dot);
-        _lightBadgeAppearance = settings.GetAppearance(IndicatorStyle.LightBadge);
-        _shadowBadgeAppearance = settings.GetAppearance(IndicatorStyle.ShadowBadge);
-        _customAppearance = settings.GetAppearance(IndicatorStyle.Custom);
+        foreach (var definition in IndicatorStyleCatalog.All)
+        {
+            _appearances.Add(definition.Style, settings.GetAppearance(definition.Style));
+        }
         _customShadow = settings.CustomIconShadow;
-        SetCustomShadowSelection(_customShadow);
+        _custom2Shadow = settings.Custom2IconShadow;
+        SetCustomShadowSelection(GetCustomShadow(_style));
         _chineseDotColor = settings.ChineseDotColor;
         _englishDotColor = settings.EnglishDotColor;
         _englishUsDotColor = settings.EnglishUsDotColor;
@@ -154,6 +162,8 @@ public partial class MainWindow : Window, IDisposable
             _minimumDisplayDurationMilliseconds.ToString(CultureInfo.InvariantCulture);
         SameAppPromptDelayTextBox.Text =
             _sameAppPromptDelaySeconds.ToString(CultureInfo.InvariantCulture);
+        IdleReshowDelayTextBox.Text =
+            _idleReshowDelaySeconds.ToString(CultureInfo.InvariantCulture);
         ChineseDotColorTextBox.Text = _chineseDotColor;
         EnglishDotColorTextBox.Text = _englishDotColor;
         EnglishUsDotColorTextBox.Text = _englishUsDotColor;
@@ -166,7 +176,9 @@ public partial class MainWindow : Window, IDisposable
         UpdatePlacementPreview();
         _indicatorSession = CreateIndicatorSession(
             _displayDurationMilliseconds,
-            _minimumDisplayDurationMilliseconds);
+            _minimumDisplayDurationMilliseconds,
+            _displayMode,
+            _idleReshowDelaySeconds);
         _capsLockEnabled = UiCapsLockProbe.IsEnabled();
         _indicatorTimer = new DispatcherTimer(
             CapsLockPollInterval,
@@ -183,7 +195,9 @@ public partial class MainWindow : Window, IDisposable
         _keyboardInputMonitor.EditingKeyPressed += OnEditingKeyPressed;
         _keyboardInputMonitor.PointerClickObserved += OnPointerClickObserved;
         _keyboardInputMonitor.PointerAnchorInvalidated += OnPointerAnchorInvalidated;
+        SetDisplayModeSelection(_displayMode);
         SetSameAppPromptSelection(_sameAppPromptMode);
+        UpdateDisplayModePanels();
         FullScreenAutoPauseCheckBox.IsChecked = _fullScreenAutoPause;
         StartWithWindowsCheckBox.IsChecked = startWithWindows;
         _settingsInitialized = true;
@@ -213,6 +227,8 @@ public partial class MainWindow : Window, IDisposable
         _watchCancellation?.Cancel();
         _watchCancellation?.Dispose();
         _watchCancellation = null;
+        ClearPointerInteraction();
+        _engine.SetCaretTrackingEnabled(false);
         _indicatorTimer.Stop();
         _updateToastTimer.Stop();
         _updateToastTimer.Tick -= OnUpdateToastTimerTick;
@@ -369,6 +385,85 @@ public partial class MainWindow : Window, IDisposable
 
     private void OnGitHubClick(object sender, RoutedEventArgs e) => _openGitHub();
 
+    private void OnDisplayModeChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_settingsInitialized)
+        {
+            return;
+        }
+
+        _displayMode = IdlePersistentDisplayModeRadio.IsChecked is true
+            ? IndicatorDisplayMode.IdlePersistent
+            : IndicatorDisplayMode.Transient;
+        _appStayPromptPolicy.Reset();
+        ClearPointerInteraction();
+        _indicatorSession = CreateIndicatorSession(
+            _displayDurationMilliseconds,
+            _minimumDisplayDurationMilliseconds,
+            _displayMode,
+            _idleReshowDelaySeconds);
+        _overlayPresenter.Hide();
+        _indicatorTimer.Stop();
+        UpdateDisplayModePanels();
+        StatusText.Text = PersistSettings()
+            ? _displayMode is IndicatorDisplayMode.IdlePersistent
+                ? $"输入停止 {_idleReshowDelaySeconds} 秒后，提示会重新显示并保持。"
+                : "已切换为短暂提示模式。"
+            : "提示方式未能保存。";
+    }
+
+    private void OnIdleReshowDelayTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_settingsInitialized ||
+            !int.TryParse(
+                IdleReshowDelayTextBox.Text,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var delaySeconds))
+        {
+            return;
+        }
+
+        if (delaySeconds > InputCueSettings.MaximumIdleReshowDelaySeconds)
+        {
+            delaySeconds = InputCueSettings.MaximumIdleReshowDelaySeconds;
+            IdleReshowDelayTextBox.Text = delaySeconds.ToString(CultureInfo.InvariantCulture);
+            IdleReshowDelayTextBox.CaretIndex = IdleReshowDelayTextBox.Text.Length;
+        }
+
+        if (delaySeconds < InputCueSettings.MinimumIdleReshowDelaySeconds ||
+            delaySeconds == _idleReshowDelaySeconds)
+        {
+            return;
+        }
+
+        _idleReshowDelaySeconds = delaySeconds;
+        _indicatorSession = CreateIndicatorSession(
+            _displayDurationMilliseconds,
+            _minimumDisplayDurationMilliseconds,
+            _displayMode,
+            _idleReshowDelaySeconds);
+        if (!PersistSettings())
+        {
+            StatusText.Text = "输入空闲时长未能保存。";
+        }
+    }
+
+    private void SetDisplayModeSelection(IndicatorDisplayMode mode)
+    {
+        IdlePersistentDisplayModeRadio.IsChecked = mode == IndicatorDisplayMode.IdlePersistent;
+        TransientDisplayModeRadio.IsChecked = mode == IndicatorDisplayMode.Transient;
+    }
+
+    private void UpdateDisplayModePanels()
+    {
+        var transientVisibility = _displayMode is IndicatorDisplayMode.Transient
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        LegacyPromptOptionsPanel.Visibility = transientVisibility;
+        TransientTimingOptionsPanel.Visibility = transientVisibility;
+    }
+
     private void OnSameAppPromptModeChanged(object sender, RoutedEventArgs e)
     {
         if (!_settingsInitialized)
@@ -441,6 +536,10 @@ public partial class MainWindow : Window, IDisposable
     private void OnWindowActivated(object? sender, EventArgs e)
     {
         _appStayPromptPolicy.Reset();
+        ClearPointerInteraction();
+        _engine.SetCaretTrackingEnabled(false);
+        _overlayPresenter.Hide();
+        _indicatorTimer.Stop();
         UpdateFullScreenAutoPauseState();
         RefreshCustomIcons(forceRescan: false);
         OnPreviewLayoutChanged(sender, e);
@@ -502,7 +601,11 @@ public partial class MainWindow : Window, IDisposable
         _englishDotColor = englishDotColor;
         _englishUsDotColor = englishUsDotColor;
         _capsLockDotColor = capsLockDotColor;
-        _indicatorSession = CreateIndicatorSession(displayDuration, minimumDisplayDuration);
+        _indicatorSession = CreateIndicatorSession(
+            displayDuration,
+            minimumDisplayDuration,
+            _displayMode,
+            _idleReshowDelaySeconds);
         _overlayPresenter.Hide();
         ConfigureOverlay();
         _indicatorTimer.Stop();
@@ -551,12 +654,10 @@ public partial class MainWindow : Window, IDisposable
         _updatingAppearanceControls = true;
         try
         {
-            SetPlacementSelection(InputCueSettings.DefaultPlacement);
-            var sizeText = (style == IndicatorStyle.Dot
-                    ? InputCueSettings.DefaultIndicatorSizeDip
-                    : InputCueSettings.DefaultLightBadgeSizeDip)
-                .ToString(CultureInfo.InvariantCulture);
-            if (style == IndicatorStyle.Dot)
+            var defaultAppearance = InputCueSettings.DefaultAppearanceFor(style);
+            SetPlacementSelection(defaultAppearance.Placement);
+            var sizeText = defaultAppearance.SizeDip.ToString(CultureInfo.InvariantCulture);
+            if (IndicatorStyleCatalog.Get(style).UsesDotSize)
             {
                 DotSizeTextBox.Text = sizeText;
             }
@@ -565,8 +666,11 @@ public partial class MainWindow : Window, IDisposable
                 BadgeSizeTextBox.Text = sizeText;
             }
 
-            HorizontalOffsetTextBox.Text = "0";
-            VerticalOffsetTextBox.Text = "0";
+            HorizontalOffsetTextBox.Text =
+                defaultAppearance.HorizontalOffsetDip.ToString(CultureInfo.InvariantCulture);
+            VerticalOffsetTextBox.Text =
+                defaultAppearance.VerticalOffsetDip.ToString(CultureInfo.InvariantCulture);
+            SetTransitionAnimationSelection(defaultAppearance.TransitionAnimation);
             ChineseDotColorTextBox.Text = InputCueSettings.DefaultChineseDotColor;
             EnglishDotColorTextBox.Text = InputCueSettings.DefaultEnglishDotColor;
             EnglishUsDotColorTextBox.Text = InputCueSettings.DefaultEnglishUsDotColor;
@@ -653,7 +757,7 @@ public partial class MainWindow : Window, IDisposable
 
         try
         {
-            Directory.CreateDirectory(_customIconsDirectory);
+            Directory.CreateDirectory(GetCustomIconsDirectory(GetSelectedStyle()));
             File.Copy(dialog.FileName, CustomIconFilePath(state), overwrite: true);
         }
         catch (Exception exception) when (
@@ -698,10 +802,11 @@ public partial class MainWindow : Window, IDisposable
 
     private void OnOpenIconsFolderClick(object sender, RoutedEventArgs e)
     {
+        var iconsDirectory = GetCustomIconsDirectory(GetSelectedStyle());
         try
         {
-            Directory.CreateDirectory(_customIconsDirectory);
-            var readmePath = Path.Combine(_customIconsDirectory, "README.txt");
+            Directory.CreateDirectory(iconsDirectory);
+            var readmePath = Path.Combine(iconsDirectory, "README.txt");
             if (!File.Exists(readmePath))
             {
                 File.WriteAllText(readmePath, CustomIconsReadmeText, Encoding.UTF8);
@@ -716,7 +821,7 @@ public partial class MainWindow : Window, IDisposable
 
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
-            FileName = _customIconsDirectory,
+            FileName = iconsDirectory,
             UseShellExecute = true,
         });
     }
@@ -729,7 +834,10 @@ public partial class MainWindow : Window, IDisposable
 
     private void OnCustomShadowChanged(object sender, RoutedEventArgs e)
     {
+        var style = GetSelectedStyle();
         if (!_settingsInitialized ||
+            _updatingAppearanceControls ||
+            !IndicatorStyleCatalog.Get(style).IsCustom ||
             sender is not RadioButton { Tag: string tag } ||
             !Enum.TryParse(tag, out CustomIconShadowMode mode) ||
             !Enum.IsDefined(mode))
@@ -737,7 +845,7 @@ public partial class MainWindow : Window, IDisposable
             return;
         }
 
-        _customShadow = mode;
+        SetCustomShadow(style, mode);
         ConfigureOverlay();
         SetCustomIconMessage(
             mode == CustomIconShadowMode.None
@@ -769,18 +877,19 @@ public partial class MainWindow : Window, IDisposable
     private void RefreshCustomIcons(bool forceRescan)
     {
         var result = CustomIconCatalog.Scan(_customIconsDirectory);
-        if (!forceRescan && result.Equals(_customIconCatalogResult))
+        var custom2Result = CustomIconCatalog.Scan(_custom2IconsDirectory);
+        if (!forceRescan &&
+            result.Equals(_customIconCatalogResult) &&
+            custom2Result.Equals(_custom2IconCatalogResult))
         {
             return;
         }
 
         _customIconCatalogResult = result;
+        _custom2IconCatalogResult = custom2Result;
         _customIconImages = CustomIconImages.From(result);
-        _overlayPresenter.UpdateCustomIcons(_customIconImages);
-        foreach (var cell in _previewCells)
-        {
-            cell.Control.UpdateCustomIcons(_customIconImages);
-        }
+        _custom2IconImages = CustomIconImages.From(custom2Result);
+        ApplyCustomResources(GetSelectedStyle());
 
         UpdateCustomIconRows();
         ShowPreviewOverlay();
@@ -788,26 +897,27 @@ public partial class MainWindow : Window, IDisposable
 
     private void UpdateCustomIconRows()
     {
+        var catalog = GetCustomIconCatalog(GetSelectedStyle());
         UpdateCustomIconRow(
-            _customIconCatalogResult.Chinese,
+            catalog.Chinese,
             ChineseIconThumbnail,
             ChineseIconPlaceholder,
             ChineseIconStatus,
             ClearChineseIconButton);
         UpdateCustomIconRow(
-            _customIconCatalogResult.English,
+            catalog.English,
             EnglishIconThumbnail,
             EnglishIconPlaceholder,
             EnglishIconStatus,
             ClearEnglishIconButton);
         UpdateCustomIconRow(
-            _customIconCatalogResult.EnglishUs,
+            catalog.EnglishUs,
             EnglishUsIconThumbnail,
             EnglishUsIconPlaceholder,
             EnglishUsIconStatus,
             ClearEnglishUsIconButton);
         UpdateCustomIconRow(
-            _customIconCatalogResult.CapsLock,
+            catalog.CapsLock,
             CapsLockIconThumbnail,
             CapsLockIconPlaceholder,
             CapsLockIconStatus,
@@ -817,11 +927,12 @@ public partial class MainWindow : Window, IDisposable
 
     private void UpdateCustomIconHint()
     {
+        var catalog = GetCustomIconCatalog(GetSelectedStyle());
         var invalid = new List<string>();
-        AppendInvalidIconDescription(InputState.Chinese, _customIconCatalogResult.Chinese, invalid);
-        AppendInvalidIconDescription(InputState.English, _customIconCatalogResult.English, invalid);
-        AppendInvalidIconDescription(InputState.EnglishUs, _customIconCatalogResult.EnglishUs, invalid);
-        AppendInvalidIconDescription(InputState.CapsLock, _customIconCatalogResult.CapsLock, invalid);
+        AppendInvalidIconDescription(InputState.Chinese, catalog.Chinese, invalid);
+        AppendInvalidIconDescription(InputState.English, catalog.English, invalid);
+        AppendInvalidIconDescription(InputState.EnglishUs, catalog.EnglishUs, invalid);
+        AppendInvalidIconDescription(InputState.CapsLock, catalog.CapsLock, invalid);
         if (invalid.Count > 0)
         {
             ShowCustomIconHint(string.Join("；", invalid) + "。", isError: true);
@@ -937,7 +1048,7 @@ public partial class MainWindow : Window, IDisposable
     }
 
     private string CustomIconFilePath(InputState state) => Path.Combine(
-        _customIconsDirectory,
+        GetCustomIconsDirectory(GetSelectedStyle()),
         state switch
         {
             InputState.Chinese => CustomIconCatalog.ChineseFileName,
@@ -946,6 +1057,51 @@ public partial class MainWindow : Window, IDisposable
             InputState.CapsLock => CustomIconCatalog.CapsLockFileName,
             _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
         });
+
+    private string GetCustomIconsDirectory(IndicatorStyle style) =>
+        style == IndicatorStyle.Custom2
+            ? _custom2IconsDirectory
+            : _customIconsDirectory;
+
+    private CustomIconCatalogResult GetCustomIconCatalog(IndicatorStyle style) =>
+        style == IndicatorStyle.Custom2
+            ? _custom2IconCatalogResult
+            : _customIconCatalogResult;
+
+    private CustomIconImages GetCustomIconImages(IndicatorStyle style) =>
+        style == IndicatorStyle.Custom2
+            ? _custom2IconImages
+            : _customIconImages;
+
+    private CustomIconShadowMode GetCustomShadow(IndicatorStyle style) =>
+        style == IndicatorStyle.Custom2
+            ? _custom2Shadow
+            : _customShadow;
+
+    private void SetCustomShadow(IndicatorStyle style, CustomIconShadowMode mode)
+    {
+        if (style == IndicatorStyle.Custom2)
+        {
+            _custom2Shadow = mode;
+        }
+        else
+        {
+            _customShadow = mode;
+        }
+    }
+
+    private void ApplyCustomResources(IndicatorStyle style)
+    {
+        var images = GetCustomIconImages(style);
+        var shadow = GetCustomShadow(style);
+        _overlayPresenter.UpdateCustomIcons(images);
+        _overlayPresenter.UpdateCustomShadow(shadow);
+        foreach (var cell in _previewCells)
+        {
+            cell.Control.UpdateCustomIcons(images);
+            cell.Control.UpdateCustomShadow(shadow);
+        }
+    }
 
     private static string StateDisplayName(InputState state) => state switch
     {
@@ -1140,8 +1296,10 @@ public partial class MainWindow : Window, IDisposable
         _watchCancellation = null;
         _isRecovering = false;
         _isFullScreenAutoPaused = false;
+        ClearPointerInteraction();
         cancellation?.Cancel();
         cancellation?.Dispose();
+        _engine.SetCaretTrackingEnabled(false);
         _overlayPresenter.Hide();
         _indicatorTimer.Stop();
         PauseButton.Content = "继续";
@@ -1212,6 +1370,7 @@ public partial class MainWindow : Window, IDisposable
         _isRecovering = isRecovering;
         if (isRecovering)
         {
+            _engine.SetCaretTrackingEnabled(false);
             _overlayPresenter.Hide();
             _indicatorTimer.Stop();
             StatusText.Text = "监听意外中断，正在自动恢复。";
@@ -1253,17 +1412,25 @@ public partial class MainWindow : Window, IDisposable
         }
 
         _pointerClick = click;
+        _pendingPointerActivation = _displayMode is IndicatorDisplayMode.IdlePersistent
+            ? click
+            : null;
         if (_watchCancellation is not null &&
             !IsActive &&
             _lastRawDiagnostic is { } diagnostic)
         {
             ShowDiagnostic(diagnostic);
         }
+
+        if (_watchCancellation is not null && !IsActive && _pendingPointerActivation is not null)
+        {
+            _engine.RequestObservation();
+        }
     }
 
     private void OnPointerAnchorInvalidated(object? sender, EventArgs e)
     {
-        _pointerClick = null;
+        ClearPointerInteraction();
         if (_lastRawDiagnostic is { } rawDiagnostic)
         {
             _lastBaseDiagnostic = rawDiagnostic;
@@ -1280,19 +1447,31 @@ public partial class MainWindow : Window, IDisposable
             return;
         }
 
+        var now = DateTimeOffset.UtcNow;
         var suppressContextReplay = diagnostic.SuppressContextReplay ||
+            _displayMode is IndicatorDisplayMode.Transient &&
             _appStayPromptPolicy.ShouldSuppressContextReplay(
-                _sameAppPromptMode,
-                TimeSpan.FromSeconds(_sameAppPromptDelaySeconds),
-                diagnostic.Target,
+                 _sameAppPromptMode,
+                 TimeSpan.FromSeconds(_sameAppPromptDelaySeconds),
+                 diagnostic.Target,
+                 diagnostic.Snapshot,
+                 now);
+        var activateContext = _displayMode is IndicatorDisplayMode.IdlePersistent &&
+            TryConsumePointerActivation(diagnostic, now);
+        var indicatorState = activateContext
+            ? _indicatorSession.ActivateContext(diagnostic.Snapshot, now)
+            : _indicatorSession.Observe(
                 diagnostic.Snapshot,
-                DateTimeOffset.UtcNow);
-        var indicatorState = _indicatorSession.Observe(
-            diagnostic.Snapshot,
-            DateTimeOffset.UtcNow,
-            diagnostic.IsPositionStabilization,
-            suppressContextReplay);
-        _overlayPresenter.Update(indicatorState);
+                now,
+                diagnostic.IsPositionStabilization ||
+                    _indicatorSession.Current.IsVisible &&
+                    diagnostic.Snapshot.Eligibility is Eligibility.EditableCaret,
+                suppressContextReplay,
+                diagnostic.DeferContextLoss);
+        _overlayPresenter.Update(
+            indicatorState,
+            targetChanged: !diagnostic.SuppressContextReplay,
+            contextActivated: activateContext);
 
         UpdateIndicatorTimer(indicatorState, diagnostic.Snapshot.Eligibility);
 
@@ -1300,6 +1479,28 @@ public partial class MainWindow : Window, IDisposable
             $"最近观察 {diagnostic.Snapshot.ObservedAt.ToLocalTime():HH:mm:ss.fff} · " +
             $"耗时 {diagnostic.DurationMilliseconds:F1} ms";
         DiagnosticText.Text = FormatDiagnostic(diagnostic);
+    }
+
+    private bool TryConsumePointerActivation(
+        InputContextDiagnostic diagnostic,
+        DateTimeOffset now)
+    {
+        if (_pendingPointerActivation is not { } click)
+        {
+            return false;
+        }
+
+        var decision = PointerAnchorFallbackPolicy.EvaluateContextActivation(
+            click,
+            diagnostic,
+            now,
+            NativeMethods.GetForegroundWindow());
+        if (decision is not PointerContextActivationDecision.Wait)
+        {
+            _pendingPointerActivation = null;
+        }
+
+        return decision is PointerContextActivationDecision.Activate;
     }
 
     private void OnIndicatorTick(object? sender, EventArgs e)
@@ -1346,7 +1547,7 @@ public partial class MainWindow : Window, IDisposable
                 NativeMethods.GetForegroundWindow());
         if (!retainPointerClick)
         {
-            _pointerClick = null;
+            ClearPointerInteraction();
             if (_lastRawDiagnostic is { } rawDiagnostic)
             {
                 _lastBaseDiagnostic = rawDiagnostic;
@@ -1373,6 +1574,12 @@ public partial class MainWindow : Window, IDisposable
 
     private void UpdateIndicatorTimer(IndicatorViewState indicatorState, Eligibility eligibility)
     {
+        _engine.SetCaretTrackingEnabled(
+            _watchCancellation is not null &&
+            !_isFullScreenAutoPaused &&
+            indicatorState.IsVisible &&
+            eligibility is Eligibility.EditableCaret);
+
         if (_watchCancellation is null || _isFullScreenAutoPaused)
         {
             _indicatorTimer.Stop();
@@ -1380,8 +1587,11 @@ public partial class MainWindow : Window, IDisposable
         }
 
         TimeSpan? interval = indicatorState.IsVisible
-            ? AnimationTickInterval
-            : eligibility is Eligibility.EditableCaret or Eligibility.EditableSelection
+            ? _displayMode is IndicatorDisplayMode.Transient
+                ? AnimationTickInterval
+                : CapsLockPollInterval
+            : _indicatorSession.HasPendingDeadline ||
+                eligibility is Eligibility.EditableCaret or Eligibility.EditableSelection
                 ? CapsLockPollInterval
                 : null;
         if (interval is null)
@@ -1429,7 +1639,7 @@ public partial class MainWindow : Window, IDisposable
         _isFullScreenAutoPaused = shouldPause;
         if (shouldPause)
         {
-            _pointerClick = null;
+            ClearPointerInteraction();
             _overlayPresenter.Hide();
             _indicatorTimer.Stop();
         }
@@ -1440,11 +1650,15 @@ public partial class MainWindow : Window, IDisposable
 
     private static IndicatorSession CreateIndicatorSession(
         int displayDurationMilliseconds,
-        int minimumDisplayDurationMilliseconds) =>
+        int minimumDisplayDurationMilliseconds,
+        IndicatorDisplayMode displayMode,
+        int idleReshowDelaySeconds) =>
         new(new IndicatorSessionOptions(
             TimeSpan.FromMilliseconds(displayDurationMilliseconds),
             TimeSpan.FromMilliseconds(150))
         {
+            DisplayMode = displayMode,
+            IdleReshowDelay = TimeSpan.FromSeconds(idleReshowDelaySeconds),
             MinimumDisplayDuration = TimeSpan.FromMilliseconds(minimumDisplayDurationMilliseconds),
         });
 
@@ -1461,16 +1675,11 @@ public partial class MainWindow : Window, IDisposable
         out IndicatorAppearanceSettings appearance)
     {
         var fallback = GetAppearance(style);
+        var definition = IndicatorStyleCatalog.Get(style);
         appearance = fallback;
-        var sizeText = style == IndicatorStyle.Dot
+        var sizeText = definition.UsesDotSize
             ? DotSizeTextBox.Text
             : BadgeSizeTextBox.Text;
-        var minimumSize = style == IndicatorStyle.Dot
-            ? InputCueSettings.MinimumIndicatorSizeDip
-            : InputCueSettings.MinimumLightBadgeSizeDip;
-        var maximumSize = style == IndicatorStyle.Dot
-            ? InputCueSettings.MaximumIndicatorSizeDip
-            : InputCueSettings.MaximumLightBadgeSizeDip;
         if (!TryReadBoundedInteger(
                 HorizontalOffsetTextBox.Text,
                 InputCueSettings.MinimumOffsetDip,
@@ -1481,7 +1690,11 @@ public partial class MainWindow : Window, IDisposable
                 InputCueSettings.MinimumOffsetDip,
                 InputCueSettings.MaximumOffsetDip,
                 out var verticalOffsetDip) ||
-            !TryReadBoundedInteger(sizeText, minimumSize, maximumSize, out var sizeDip))
+            !TryReadBoundedInteger(
+                sizeText,
+                definition.MinimumSizeDip,
+                definition.MaximumSizeDip,
+                out var sizeDip))
         {
             return false;
         }
@@ -1490,7 +1703,8 @@ public partial class MainWindow : Window, IDisposable
             GetSelectedPlacement() ?? fallback.Placement,
             horizontalOffsetDip,
             verticalOffsetDip,
-            sizeDip);
+            sizeDip,
+            GetSelectedTransitionAnimation() ?? fallback.TransitionAnimation);
         return true;
     }
 
@@ -1520,6 +1734,12 @@ public partial class MainWindow : Window, IDisposable
         {
             StatusText.Text = "外观已应用，但未能保存。";
         }
+    }
+
+    private void ClearPointerInteraction()
+    {
+        _pointerClick = null;
+        _pendingPointerActivation = null;
     }
 
     private static bool TryReadBoundedInteger(
@@ -1589,58 +1809,49 @@ public partial class MainWindow : Window, IDisposable
         return null;
     }
 
-    private IndicatorStyle GetSelectedStyle() =>
-        CustomStyleRadio.IsChecked is true
-            ? IndicatorStyle.Custom
-            : ShadowBadgeStyleRadio.IsChecked is true
-                ? IndicatorStyle.ShadowBadge
-                : LightBadgeStyleRadio.IsChecked is true
-                    ? IndicatorStyle.LightBadge
-                    : IndicatorStyle.Dot;
+    private IndicatorStyle GetSelectedStyle()
+    {
+        foreach (var radioButton in StylePicker.Children.OfType<RadioButton>())
+        {
+            if (radioButton.IsChecked is true &&
+                radioButton.Tag is string value &&
+                Enum.TryParse<IndicatorStyle>(value, out var style) &&
+                Enum.IsDefined(style))
+            {
+                return style;
+            }
+        }
+
+        return IndicatorStyle.Default;
+    }
 
     private void SetStyleSelection(IndicatorStyle style)
     {
-        DotStyleRadio.IsChecked = style == IndicatorStyle.Dot;
-        LightBadgeStyleRadio.IsChecked = style == IndicatorStyle.LightBadge;
-        ShadowBadgeStyleRadio.IsChecked = style == IndicatorStyle.ShadowBadge;
-        CustomStyleRadio.IsChecked = style == IndicatorStyle.Custom;
+        foreach (var radioButton in StylePicker.Children.OfType<RadioButton>())
+        {
+            radioButton.IsChecked =
+                radioButton.Tag is string value &&
+                Enum.TryParse<IndicatorStyle>(value, out var candidate) &&
+                candidate == style;
+        }
     }
 
-    private IndicatorAppearanceSettings GetAppearance(IndicatorStyle style) => style switch
-    {
-        IndicatorStyle.Dot => _dotAppearance,
-        IndicatorStyle.LightBadge => _lightBadgeAppearance,
-        IndicatorStyle.ShadowBadge => _shadowBadgeAppearance,
-        IndicatorStyle.Custom => _customAppearance,
-        _ => throw new ArgumentOutOfRangeException(nameof(style), style, null),
-    };
+    private IndicatorAppearanceSettings GetAppearance(IndicatorStyle style) =>
+        _appearances.TryGetValue(style, out var appearance)
+            ? appearance
+            : throw new ArgumentOutOfRangeException(nameof(style), style, null);
 
     private void SetAppearance(IndicatorStyle style, IndicatorAppearanceSettings appearance)
     {
-        switch (style)
-        {
-            case IndicatorStyle.Dot:
-                _dotAppearance = appearance;
-                break;
-            case IndicatorStyle.LightBadge:
-                _lightBadgeAppearance = appearance;
-                break;
-            case IndicatorStyle.ShadowBadge:
-                _shadowBadgeAppearance = appearance;
-                break;
-            case IndicatorStyle.Custom:
-                _customAppearance = appearance;
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(style), style, null);
-        }
+        _ = IndicatorStyleCatalog.Get(style);
+        _appearances[style] = appearance;
     }
 
     private void LoadAppearance(IndicatorStyle style)
     {
         var appearance = GetAppearance(style);
         SetPlacementSelection(appearance.Placement);
-        if (style == IndicatorStyle.Dot)
+        if (IndicatorStyleCatalog.Get(style).UsesDotSize)
         {
             DotSizeTextBox.Text = appearance.SizeDip.ToString(CultureInfo.InvariantCulture);
         }
@@ -1653,26 +1864,68 @@ public partial class MainWindow : Window, IDisposable
             appearance.HorizontalOffsetDip.ToString(CultureInfo.InvariantCulture);
         VerticalOffsetTextBox.Text =
             appearance.VerticalOffsetDip.ToString(CultureInfo.InvariantCulture);
+        SetTransitionAnimationSelection(appearance.TransitionAnimation);
+    }
+
+    private IndicatorTransitionAnimation? GetSelectedTransitionAnimation()
+    {
+        if (TransitionAnimationFlipRadio.IsChecked is true)
+        {
+            return IndicatorTransitionAnimation.Flip;
+        }
+
+        return TransitionAnimationNoneRadio.IsChecked is true
+            ? IndicatorTransitionAnimation.None
+            : null;
+    }
+
+    private void SetTransitionAnimationSelection(IndicatorTransitionAnimation animation)
+    {
+        TransitionAnimationNoneRadio.IsChecked = animation == IndicatorTransitionAnimation.None;
+        TransitionAnimationFlipRadio.IsChecked = animation == IndicatorTransitionAnimation.Flip;
     }
 
     private void UpdateStylePanels()
     {
         var style = GetSelectedStyle();
-        DotSizePanel.Visibility = style == IndicatorStyle.Dot
+        var definition = IndicatorStyleCatalog.Get(style);
+        DotSizePanel.Visibility = definition.UsesDotSize
             ? Visibility.Visible
             : Visibility.Collapsed;
-        BadgeSizePanel.Visibility = style is IndicatorStyle.LightBadge or IndicatorStyle.ShadowBadge or IndicatorStyle.Custom
+        BadgeSizePanel.Visibility = !definition.UsesDotSize
             ? Visibility.Visible
             : Visibility.Collapsed;
-        BadgeSizeLabel.Text = style == IndicatorStyle.Custom
+        BadgeSizeLabel.Text = definition.IsCustom
             ? "图标尺寸"
             : "徽标尺寸";
-        DotColorPanel.Visibility = style == IndicatorStyle.Dot
+        DotColorPanel.Visibility = definition.UsesDotSize
             ? Visibility.Visible
             : Visibility.Collapsed;
-        CustomIconPanel.Visibility = style == IndicatorStyle.Custom
+        var customVisibility = definition.IsCustom
             ? Visibility.Visible
             : Visibility.Collapsed;
+        CustomIconPanel.Visibility = customVisibility;
+        CustomShadowOptionsPanel.Visibility = customVisibility;
+        CustomIconActionsPanel.Visibility = customVisibility;
+        if (definition.IsCustom)
+        {
+            var wasUpdating = _updatingAppearanceControls;
+            _updatingAppearanceControls = true;
+            try
+            {
+                SetCustomShadowSelection(GetCustomShadow(style));
+            }
+            finally
+            {
+                _updatingAppearanceControls = wasUpdating;
+            }
+
+            CustomIconTitle.Text = style == IndicatorStyle.Custom2
+                ? "自定义图标 · 槽位 2"
+                : "自定义图标 · 槽位 1";
+            ApplyCustomResources(style);
+            UpdateCustomIconRows();
+        }
     }
 
     private void SetPlacementSelection(IndicatorPlacement placement)
@@ -1689,22 +1942,25 @@ public partial class MainWindow : Window, IDisposable
     private void UpdatePlacementPreview()
     {
         var style = GetSelectedStyle();
+        var definition = IndicatorStyleCatalog.Get(style);
         var fallback = GetAppearance(style);
         var placement = GetSelectedPlacement() ?? fallback.Placement;
-        var sizeText = style == IndicatorStyle.Dot
+        var sizeText = definition.UsesDotSize
             ? DotSizeTextBox.Text
             : BadgeSizeTextBox.Text;
-        var minimumSize = style == IndicatorStyle.Dot
-            ? InputCueSettings.MinimumIndicatorSizeDip
-            : InputCueSettings.MinimumLightBadgeSizeDip;
-        var maximumSize = style == IndicatorStyle.Dot
-            ? InputCueSettings.MaximumIndicatorSizeDip
-            : InputCueSettings.MaximumLightBadgeSizeDip;
-        var size = TryReadBoundedInteger(sizeText, minimumSize, maximumSize, out var parsedSize)
+        var size = TryReadBoundedInteger(
+                sizeText,
+                definition.MinimumSizeDip,
+                definition.MaximumSizeDip,
+                out var parsedSize)
             ? parsedSize
             : fallback.SizeDip;
-        var dotSize = style == IndicatorStyle.Dot ? size : _dotAppearance.SizeDip;
-        var badgeSize = style == IndicatorStyle.Dot ? _lightBadgeAppearance.SizeDip : size;
+        var dotSize = definition.UsesDotSize
+            ? size
+            : GetAppearance(IndicatorStyle.Dot).SizeDip;
+        var badgeSize = definition.UsesDotSize
+            ? GetAppearance(IndicatorStyle.LightBadge).SizeDip
+            : size;
         var horizontalOffset = TryReadBoundedInteger(
             HorizontalOffsetTextBox.Text,
             InputCueSettings.MinimumOffsetDip,
@@ -1738,10 +1994,12 @@ public partial class MainWindow : Window, IDisposable
             verticalOffset,
             dotSize,
             badgeSize,
+            GetSelectedTransitionAnimation() ?? fallback.TransitionAnimation,
             chineseDotColor,
             englishDotColor,
             englishUsDotColor,
             capsLockDotColor);
+        ApplyCustomResources(style);
         PreviewIndicatorChinese.Configure(
             style,
             dotSize,
@@ -1866,37 +2124,35 @@ public partial class MainWindow : Window, IDisposable
             appearance.Placement,
             appearance.HorizontalOffsetDip,
             appearance.VerticalOffsetDip,
-            _dotAppearance.SizeDip,
-            _style == IndicatorStyle.Dot ? _lightBadgeAppearance.SizeDip : appearance.SizeDip,
+            GetAppearance(IndicatorStyle.Dot).SizeDip,
+            IndicatorStyleCatalog.Get(_style).UsesDotSize
+                ? GetAppearance(IndicatorStyle.LightBadge).SizeDip
+                : appearance.SizeDip,
+            appearance.TransitionAnimation,
             _chineseDotColor,
             _englishDotColor,
             _englishUsDotColor,
             _capsLockDotColor);
-        _overlayPresenter.UpdateCustomShadow(_customShadow);
+        ApplyCustomResources(_style);
         foreach (var cell in _previewCells)
         {
             cell.Control.Configure(
                 _style,
-                _dotAppearance.SizeDip,
-                _style == IndicatorStyle.Dot ? _lightBadgeAppearance.SizeDip : appearance.SizeDip,
+                GetAppearance(IndicatorStyle.Dot).SizeDip,
+                IndicatorStyleCatalog.Get(_style).UsesDotSize
+                    ? GetAppearance(IndicatorStyle.LightBadge).SizeDip
+                    : appearance.SizeDip,
                 _chineseDotColor,
                 _englishDotColor,
                 _englishUsDotColor,
                 _capsLockDotColor);
-            cell.Control.UpdateCustomShadow(_customShadow);
         }
 
         ShowPreviewOverlay();
     }
 
-    private static string StyleName(IndicatorStyle style) => style switch
-    {
-        IndicatorStyle.Dot => "圆点",
-        IndicatorStyle.LightBadge => "描边",
-        IndicatorStyle.ShadowBadge => "阴影",
-        IndicatorStyle.Custom => "自定义",
-        _ => "圆点",
-    };
+    private static string StyleName(IndicatorStyle style) =>
+        IndicatorStyleCatalog.Get(style).DisplayName;
 
     private static string PlacementName(IndicatorPlacement placement) => placement switch
     {
@@ -1929,21 +2185,26 @@ public partial class MainWindow : Window, IDisposable
             activeAppearance.Placement,
             activeAppearance.HorizontalOffsetDip,
             activeAppearance.VerticalOffsetDip,
-            _dotAppearance.SizeDip,
+            GetAppearance(IndicatorStyle.Dot).SizeDip,
             _style,
-            _lightBadgeAppearance.SizeDip,
+            GetAppearance(IndicatorStyle.LightBadge).SizeDip,
             _chineseDotColor,
             _englishDotColor,
             _englishUsDotColor,
             _capsLockDotColor,
-            _dotAppearance,
-            _lightBadgeAppearance,
-            _shadowBadgeAppearance,
-            _customAppearance,
+            GetAppearance(IndicatorStyle.Dot),
+            GetAppearance(IndicatorStyle.LightBadge),
+            GetAppearance(IndicatorStyle.ShadowBadge),
+            GetAppearance(IndicatorStyle.Custom),
             CustomIconShadow: _customShadow,
-            _sameAppPromptMode,
-            _sameAppPromptDelaySeconds,
-            _fullScreenAutoPause));
+            SameAppPromptMode: _sameAppPromptMode,
+            SameAppPromptDelaySeconds: _sameAppPromptDelaySeconds,
+            FullScreenAutoPause: _fullScreenAutoPause,
+            DisplayMode: _displayMode,
+            IdleReshowDelaySeconds: _idleReshowDelaySeconds,
+            DefaultAppearance: GetAppearance(IndicatorStyle.Default),
+            Custom2Appearance: GetAppearance(IndicatorStyle.Custom2),
+            Custom2IconShadow: _custom2Shadow));
     }
 
     private string FormatDiagnostic(InputContextDiagnostic diagnostic)
@@ -1965,6 +2226,8 @@ public partial class MainWindow : Window, IDisposable
             HasDefaultIMEWnd  {ValueOrUnknown(inputStateEvidence.HasDefaultImeWindow)}
             WindowOpenStatus  {FormatHex(inputStateEvidence.ImeWindowOpenStatus)}
             WindowConvMode    {FormatHex(inputStateEvidence.ImeWindowConversionMode)}
+            InputProcessor    {ValueOrUnknown(inputStateEvidence.InputProcessorClassId)}
+            InputProfile      {ValueOrUnknown(inputStateEvidence.InputProcessorProfileId)}
             EvidenceGrade     {snapshot.EvidenceGrade}
             ReasonCode        {snapshot.ReasonCode}
 
@@ -2005,6 +2268,10 @@ public partial class MainWindow : Window, IDisposable
         false => "false",
         null => "unknown",
     };
+
+    private static string ValueOrUnknown(Guid? value) => value is null
+        ? "unknown"
+        : value.Value.ToString("D", CultureInfo.InvariantCulture);
 
     private static string FormatHex(ushort? value) => value is null
         ? "unknown"

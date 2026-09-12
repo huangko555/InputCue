@@ -48,6 +48,16 @@ internal static class AppProfileCatalog
         ContainsClassToken(className, "ProseMirror") &&
         ContainsClassToken(className, "ProseMirror-focused");
 
+    internal static bool SupportsWritableBilibiliRichTextSurface(
+        string? className,
+        string? frameworkId,
+        ControlType? controlType,
+        bool hasTextPattern) =>
+        string.Equals(frameworkId, "Chrome", StringComparison.Ordinal) &&
+        controlType == ControlType.Group &&
+        hasTextPattern &&
+        ContainsClassToken(className, "brt-editor");
+
     internal static bool SupportsWritableFeishuDocumentSurface(
         string? className,
         string? frameworkId,
@@ -59,6 +69,15 @@ internal static class AppProfileCatalog
         ContainsClassToken(className, "page-block") &&
         ContainsClassToken(className, "root-block");
 
+    internal static bool SupportsWritableFeishuDocumentSurface(TargetDescriptor target) =>
+        string.Equals(target.FrameworkId, "Chrome", StringComparison.Ordinal) &&
+        string.Equals(
+            target.ControlType,
+            ControlType.Group.ProgrammaticName,
+            StringComparison.Ordinal) &&
+        ContainsClassToken(target.ClassName, "page-block") &&
+        ContainsClassToken(target.ClassName, "root-block");
+
     internal static bool IsHiddenFeishuSelectionHelper(
         string? className,
         string? frameworkId,
@@ -66,6 +85,32 @@ internal static class AppProfileCatalog
         string.Equals(frameworkId, "Chrome", StringComparison.Ordinal) &&
         controlType == ControlType.Edit &&
         ContainsClassToken(className, "docx-selection-hidden-textarea");
+
+    internal static bool IsHiddenFeishuSelectionHelper(TargetDescriptor target) =>
+        string.Equals(target.FrameworkId, "Chrome", StringComparison.Ordinal) &&
+        string.Equals(
+            target.ControlType,
+            ControlType.Edit.ProgrammaticName,
+            StringComparison.Ordinal) &&
+        ContainsClassToken(target.ClassName, "docx-selection-hidden-textarea");
+
+    internal static bool SupportsFeishuDocumentFocusProxy(
+        string? focusedClassName,
+        string? focusedFrameworkId,
+        ControlType? focusedControlType,
+        string? documentClassName,
+        string? documentFrameworkId,
+        ControlType? documentControlType,
+        bool documentHasTextPattern) =>
+        IsHiddenFeishuSelectionHelper(
+            focusedClassName,
+            focusedFrameworkId,
+            focusedControlType) &&
+        SupportsWritableFeishuDocumentSurface(
+            documentClassName,
+            documentFrameworkId,
+            documentControlType,
+            documentHasTextPattern);
 
     internal static bool SupportsWritableFeishuSheetSurface(
         string? className,
