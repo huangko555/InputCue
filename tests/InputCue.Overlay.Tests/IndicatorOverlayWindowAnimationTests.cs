@@ -1,6 +1,5 @@
 using System.Runtime.ExceptionServices;
 using System.Windows.Media;
-using System.Windows.Threading;
 using InputCue.Core.Indicator;
 using InputCue.Core.InputContext;
 using InputCue.Core.Settings;
@@ -75,12 +74,13 @@ public sealed class IndicatorOverlayWindowAnimationTests
             {
                 window = CreateWindow();
                 window.Render(VisibleState(InputState.Chinese, IndicatorReasonCode.ContextEstablished));
-                PumpDispatcher(TimeSpan.FromMilliseconds(35));
-                scaleBeforeCorrection = window.IndicatorScale.ScaleX;
+                AdvanceAppearanceFrames(window, 2);
+                scaleBeforeCorrection = (double)window.IndicatorScale.GetAnimationBaseValue(
+                    ScaleTransform.ScaleXProperty);
 
                 window.Render(VisibleState(InputState.English, IndicatorReasonCode.InputStateChanged));
-                PumpDispatcher(TimeSpan.FromMilliseconds(35));
-                scaleAfterCorrection = window.IndicatorScale.ScaleX;
+                scaleAfterCorrection = (double)window.IndicatorScale.GetAnimationBaseValue(
+                    ScaleTransform.ScaleXProperty);
             }
             catch (Exception exception)
             {
@@ -96,10 +96,8 @@ public sealed class IndicatorOverlayWindowAnimationTests
 
         Assert.True(thread.Join(TimeSpan.FromSeconds(5)), "STA animation test timed out.");
         failure?.Throw();
-        Assert.InRange(scaleBeforeCorrection ?? -1, 0.05, 0.95);
-        Assert.True(
-            scaleAfterCorrection >= scaleBeforeCorrection,
-            $"Expansion reversed from {scaleBeforeCorrection:F3} to {scaleAfterCorrection:F3}.");
+        Assert.Equal(0, scaleBeforeCorrection);
+        Assert.Equal(scaleBeforeCorrection, scaleAfterCorrection);
     }
 
     [Fact]
@@ -115,7 +113,7 @@ public sealed class IndicatorOverlayWindowAnimationTests
             {
                 window = CreateWindow();
                 window.Render(VisibleState(InputState.Chinese, IndicatorReasonCode.ContextEstablished));
-                PumpDispatcher(TimeSpan.FromMilliseconds(100));
+                AdvanceAppearanceFrames(window, 2);
 
                 window.HideIndicator();
 
@@ -141,7 +139,7 @@ public sealed class IndicatorOverlayWindowAnimationTests
     }
 
     [Fact]
-    public void HiddenOverlayCompletesARepeatedAppearance()
+    public void HiddenOverlayStartsARepeatedAppearanceFromCollapsed()
     {
         double? opacity = null;
         double? scale = null;
@@ -153,7 +151,7 @@ public sealed class IndicatorOverlayWindowAnimationTests
             {
                 window = CreateWindow();
                 window.Render(VisibleState(InputState.Chinese, IndicatorReasonCode.ContextEstablished));
-                PumpDispatcher(TimeSpan.FromMilliseconds(120));
+                AdvanceAppearanceFrames(window, 2);
                 window.Render(new IndicatorViewState(
                     1,
                     IndicatorPhase.Hidden,
@@ -163,10 +161,11 @@ public sealed class IndicatorOverlayWindowAnimationTests
                     IndicatorReasonCode.InputActivityDetected));
 
                 window.Render(VisibleState(InputState.Chinese, IndicatorReasonCode.InputIdleElapsed));
-                PumpDispatcher(TimeSpan.FromMilliseconds(180));
+                AdvanceAppearanceFrames(window, 2);
 
                 opacity = window.Opacity;
-                scale = window.IndicatorScale.ScaleX;
+                scale = (double)window.IndicatorScale.GetAnimationBaseValue(
+                    ScaleTransform.ScaleXProperty);
             }
             catch (Exception exception)
             {
@@ -183,7 +182,7 @@ public sealed class IndicatorOverlayWindowAnimationTests
         Assert.True(thread.Join(TimeSpan.FromSeconds(5)), "STA animation test timed out.");
         failure?.Throw();
         Assert.Equal(1, opacity);
-        Assert.Equal(1, scale);
+        Assert.Equal(0, scale);
     }
 
     [Fact]
@@ -192,8 +191,10 @@ public sealed class IndicatorOverlayWindowAnimationTests
         double? opacity = null;
         double? baseScale = null;
         double? completedOpacity = null;
-        double? completedScale = null;
-        var transparentRenderFrames = 0;
+        double? completedBaseScale = null;
+        ScreenRect? beforeHandoff = null;
+        ScreenRect? afterFirstFrame = null;
+        ScreenRect? afterSecondFrame = null;
         ExceptionDispatchInfo? failure = null;
         var thread = new Thread(() =>
         {
@@ -202,39 +203,31 @@ public sealed class IndicatorOverlayWindowAnimationTests
             {
                 window = CreateWindow();
                 window.Render(VisibleState(InputState.Chinese, IndicatorReasonCode.ContextEstablished));
-                PumpDispatcher(TimeSpan.FromMilliseconds(100));
+                AdvanceAppearanceFrames(window, 2);
+                beforeHandoff = window.PositionedAnchor;
 
-                EventHandler rendering = (_, _) =>
-                {
-                    if (window.Opacity == 0)
-                    {
-                        transparentRenderFrames++;
-                    }
-                };
-                CompositionTarget.Rendering += rendering;
-                try
-                {
-                    window.Render(
-                        new IndicatorViewState(
-                            2,
-                            IndicatorPhase.Visible,
-                            InputState.Chinese,
-                            Anchor with { X = 180 },
-                            1,
-                            IndicatorReasonCode.ContextEstablished),
-                        targetChanged: true);
+                window.Render(
+                    new IndicatorViewState(
+                        2,
+                        IndicatorPhase.Visible,
+                        InputState.Chinese,
+                        Anchor with { X = 180 },
+                        1,
+                        IndicatorReasonCode.ContextEstablished),
+                    targetChanged: true);
 
-                    opacity = window.Opacity;
-                    baseScale = (double)window.IndicatorScale.GetAnimationBaseValue(
-                        ScaleTransform.ScaleXProperty);
-                    PumpDispatcher(TimeSpan.FromMilliseconds(100));
-                    completedOpacity = window.Opacity;
-                    completedScale = window.IndicatorScale.ScaleX;
-                }
-                finally
-                {
-                    CompositionTarget.Rendering -= rendering;
-                }
+                opacity = window.Opacity;
+                baseScale = (double)window.IndicatorScale.GetAnimationBaseValue(
+                    ScaleTransform.ScaleXProperty);
+                AdvanceAppearanceFrames(window, 1);
+                afterFirstFrame = window.PositionedAnchor;
+                AdvanceAppearanceFrames(window, 1);
+                afterSecondFrame = window.PositionedAnchor;
+                Assert.Equal(0, window.Opacity);
+                AdvanceAppearanceFrames(window, 1);
+                completedOpacity = window.Opacity;
+                completedBaseScale = (double)window.IndicatorScale.GetAnimationBaseValue(
+                    ScaleTransform.ScaleXProperty);
             }
             catch (Exception exception)
             {
@@ -252,11 +245,10 @@ public sealed class IndicatorOverlayWindowAnimationTests
         failure?.Throw();
         Assert.Equal(0, opacity);
         Assert.Equal(0, baseScale);
+        Assert.Equal(beforeHandoff, afterFirstFrame);
+        Assert.NotEqual(beforeHandoff, afterSecondFrame);
         Assert.Equal(1, completedOpacity);
-        Assert.Equal(1, completedScale);
-        Assert.True(
-            transparentRenderFrames >= 1,
-            "No transparent frame reached WPF composition before the context moved.");
+        Assert.Equal(0, completedBaseScale);
     }
 
     [Fact]
@@ -264,7 +256,9 @@ public sealed class IndicatorOverlayWindowAnimationTests
     {
         ScreenRect? beforeHandoff = null;
         ScreenRect? immediatelyAfterHandoff = null;
+        ScreenRect? afterTransparentFrame = null;
         ScreenRect? afterAppearance = null;
+        double? opacityAfterTargetMove = null;
         ExceptionDispatchInfo? failure = null;
         var thread = new Thread(() =>
         {
@@ -273,7 +267,7 @@ public sealed class IndicatorOverlayWindowAnimationTests
             {
                 window = CreateWindow();
                 window.Render(VisibleState(InputState.Chinese, IndicatorReasonCode.ContextEstablished));
-                PumpDispatcher(TimeSpan.FromMilliseconds(100));
+                AdvanceAppearanceFrames(window, 2);
                 beforeHandoff = window.PositionedAnchor;
 
                 window.Render(
@@ -287,8 +281,11 @@ public sealed class IndicatorOverlayWindowAnimationTests
                     targetChanged: true);
                 immediatelyAfterHandoff = window.PositionedAnchor;
 
-                PumpDispatcher(TimeSpan.FromMilliseconds(120));
+                AdvanceAppearanceFrames(window, 1);
+                afterTransparentFrame = window.PositionedAnchor;
+                AdvanceAppearanceFrames(window, 1);
                 afterAppearance = window.PositionedAnchor;
+                opacityAfterTargetMove = window.Opacity;
             }
             catch (Exception exception)
             {
@@ -305,11 +302,13 @@ public sealed class IndicatorOverlayWindowAnimationTests
         Assert.True(thread.Join(TimeSpan.FromSeconds(5)), "STA animation test timed out.");
         failure?.Throw();
         Assert.Equal(beforeHandoff, immediatelyAfterHandoff);
+        Assert.Equal(beforeHandoff, afterTransparentFrame);
         Assert.NotEqual(beforeHandoff, afterAppearance);
+        Assert.Equal(0, opacityAfterTargetMove);
     }
 
     [Fact]
-    public void SameTargetGenerationCorrectionDoesNotReplayTheAppearance()
+    public void SameTargetGenerationCorrectionDoesNotReprimeTheAppearance()
     {
         double? opacity = null;
         double? baseScale = null;
@@ -321,7 +320,7 @@ public sealed class IndicatorOverlayWindowAnimationTests
             {
                 window = CreateWindow();
                 window.Render(VisibleState(InputState.Chinese, IndicatorReasonCode.ContextEstablished));
-                PumpDispatcher(TimeSpan.FromMilliseconds(100));
+                AdvanceAppearanceFrames(window, 2);
 
                 window.Render(
                     new IndicatorViewState(
@@ -352,7 +351,7 @@ public sealed class IndicatorOverlayWindowAnimationTests
         Assert.True(thread.Join(TimeSpan.FromSeconds(5)), "STA animation test timed out.");
         failure?.Throw();
         Assert.Equal(1, opacity);
-        Assert.Equal(1, baseScale);
+        Assert.Equal(0, baseScale);
     }
 
     [Fact]
@@ -366,7 +365,7 @@ public sealed class IndicatorOverlayWindowAnimationTests
             {
                 window = CreateWindow();
                 window.Render(VisibleState(InputState.Chinese, IndicatorReasonCode.ContextEstablished));
-                PumpDispatcher(TimeSpan.FromMilliseconds(100));
+                AdvanceAppearanceFrames(window, 2);
 
                 for (var index = 0; index < 100; index++)
                 {
@@ -382,7 +381,7 @@ public sealed class IndicatorOverlayWindowAnimationTests
 
                     Assert.Equal(1, window.Opacity);
                     Assert.Equal(
-                        1,
+                        0,
                         (double)window.IndicatorScale.GetAnimationBaseValue(
                             ScaleTransform.ScaleXProperty));
                 }
@@ -435,20 +434,13 @@ public sealed class IndicatorOverlayWindowAnimationTests
         IndicatorReasonCode reasonCode) =>
         new(1, IndicatorPhase.Visible, state, Anchor, 1, reasonCode);
 
-    private static void PumpDispatcher(TimeSpan duration)
+    private static void AdvanceAppearanceFrames(
+        IndicatorOverlayWindow window,
+        int count)
     {
-        var frame = new DispatcherFrame();
-        var timer = new DispatcherTimer(DispatcherPriority.Background)
+        for (var index = 0; index < count; index++)
         {
-            Interval = duration,
-        };
-        timer.Tick += (_, _) =>
-        {
-            timer.Stop();
-            frame.Continue = false;
-        };
-        timer.Start();
-        Dispatcher.PushFrame(frame);
+            window.AdvanceAppearanceFrame();
+        }
     }
-
 }

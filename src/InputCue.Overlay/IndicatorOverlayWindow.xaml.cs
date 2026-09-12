@@ -356,6 +356,11 @@ public partial class IndicatorOverlayWindow : Window
 
     private void OnAppearanceRendering(object? sender, EventArgs e)
     {
+        AdvanceAppearanceFrame();
+    }
+
+    internal void AdvanceAppearanceFrame()
+    {
         _primingRenderCount++;
         if (_primedAppearance is not { } appearance || !_isIndicatorVisible)
         {
